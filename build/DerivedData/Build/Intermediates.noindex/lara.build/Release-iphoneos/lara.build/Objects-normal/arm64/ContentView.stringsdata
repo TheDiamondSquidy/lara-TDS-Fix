@@ -1,0 +1,48 @@
+{
+  "source": "/Users/ruter/Documents/GitHub/lara/lara/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "lara",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Running...",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "Run Darksword",
+        "location": {
+          "startingColumn": 60,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear Logs",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 27
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,532 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project /Users/ruter/Documents/GitHub/lara/lara.xcodeproj -scheme lara -configuration Release -sdk iphoneos -destination generic/platform=iOS -derivedDataPath /Users/ruter/Documents/GitHub/lara/build/DerivedData build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_STYLE=Manual
+
+Build settings from command line:
+    CODE_SIGN_STYLE = Manual
+    CODE_SIGNING_ALLOWED = NO
+    CODE_SIGNING_REQUIRED = NO
+    SDKROOT = iphoneos26.0
+
+2026-03-24 09:54:38.030 xcodebuild[94311:60590109] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'lara' in project 'lara' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -x objective-c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/ruter/Documents/GitHub/lara/lara/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: 781a2744c45e7bc7e56be5c6bd5a60cb
+Build description path: /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/XCBuildData/781a2744c45e7bc7e56be5c6bd5a60cb.xcbuilddata
+CreateBuildDirectory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    builtin-create-build-directory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache
+
+CreateBuildDirectory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    builtin-create-build-directory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex
+
+CreateBuildDirectory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    builtin-create-build-directory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos
+
+CreateBuildDirectory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    builtin-create-build-directory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    builtin-create-build-directory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    builtin-create-build-directory /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara-4c702f234c682efa825d6a31718a42f0-VFS-iphoneos/all-product-headers.yaml
+    cd /Users/ruter/Documents/GitHub/lara/lara.xcodeproj
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara-4c702f234c682efa825d6a31718a42f0-VFS-iphoneos/all-product-headers.yaml
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-project-headers.hmap (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-project-headers.hmap
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-target-headers.hmap (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/empty-lara.plist (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/empty-lara.plist
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-non-framework-target-headers.hmap (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.hmap (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.hmap
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-own-target-headers.hmap (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-generated-files.hmap (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-generated-files.hmap
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyStaticMetadataFileList (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyMetadataFileList (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.LinkFileList (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.LinkFileList
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_const_extract_protocols.json (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftFileList (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftFileList
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftConstValuesFileList (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-OutputFileMap.json (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-OutputFileMap.json
+
+MkDir /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /bin/mkdir -p /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app
+
+WriteAuxiliaryFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    write-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
+-target arm64-apple-ios18.0 '-std=gnu17' -fobjc-arc -fobjc-weak -fmodules -gmodules '-fmodules-cache-path=/Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex' -fpascal-strings -Os -fno-common '-DNS_BLOCK_ASSERTIONS=1' '-DOBJC_OLD_DISPATCH_PROTOTYPES=0' -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -g '-fvisibility=hidden' -iquote /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-generated-files.hmap -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-own-target-headers.hmap -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-target-headers.hmap -iquote /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-project-headers.hmap -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/include -I/Users/ruter/Documents/GitHub/lara/lara/kexploit -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources-normal/arm64 -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/arm64 -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources -F/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos
+
+MkDir /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/unthinned (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /bin/mkdir -p /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/unthinned
+
+MkDir /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/thinned (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /bin/mkdir -p /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/thinned
+
+GenerateAssetSymbols /Users/ruter/Documents/GitHub/lara/lara/Assets.xcassets (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/ruter/Documents/GitHub/lara/lara/Assets.xcassets --compile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app --output-format human-readable-text --notices --warnings --export-dependency-info /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_dependencies --output-partial-info-plist /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist --app-icon AppIcon --accent-color AccentColor --compress-pngs --enable-on-demand-resources YES --development-region en --target-device iphone --target-device ipad --minimum-deployment-target 18.0 --platform iphoneos --bundle-identifier com.roooot.lara --generate-swift-asset-symbols /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols.swift --generate-objc-asset-symbols /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols.h --generate-asset-symbol-index /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/* com.apple.actool.compilation-results */
+/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols.h
+/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols.swift
+
+
+CompileAssetCatalogVariant thinned /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app /Users/ruter/Documents/GitHub/lara/lara/Assets.xcassets (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/ruter/Documents/GitHub/lara/lara/Assets.xcassets --compile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --accent-color AccentColor --compress-pngs --enable-on-demand-resources YES --development-region en --target-device iphone --target-device ipad --minimum-deployment-target 18.0 --platform iphoneos
+/* com.apple.actool.compilation-results */
+/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist_thinned
+
+
+SwiftDriver lara normal arm64 com.apple.xcode.tools.swift.compiler (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name lara -O -whole-module-optimization -enforce-exclusivity\=checked @/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftFileList -default-isolation\=MainActor -enable-bare-slash-regex -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -target arm64-apple-ios18.0 -g -module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -F /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64 -c -num-threads 14 -Xcc -ivfsstatcache -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache -output-file-map /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_const_extract_protocols.json -Xcc -iquote -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-generated-files.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-own-target-headers.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-target-headers.hmap -Xcc -iquote -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-project-headers.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/include -Xcc -I/Users/ruter/Documents/GitHub/lara/lara/kexploit -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources-normal/arm64 -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/arm64 -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-Swift.h -import-objc-header /Users/ruter/Documents/GitHub/lara/lara/lara-Bridging-Header.h -working-directory /Users/ruter/Documents/GitHub/lara -no-emit-module-separately-wmo
+
+SwiftDriver\ Compilation lara normal arm64 com.apple.xcode.tools.swift.compiler (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name lara -O -whole-module-optimization -enforce-exclusivity\=checked @/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftFileList -default-isolation\=MainActor -enable-bare-slash-regex -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -target arm64-apple-ios18.0 -g -module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -F /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64 -c -num-threads 14 -Xcc -ivfsstatcache -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache -output-file-map /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_const_extract_protocols.json -Xcc -iquote -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-generated-files.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-own-target-headers.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-target-headers.hmap -Xcc -iquote -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-project-headers.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/include -Xcc -I/Users/ruter/Documents/GitHub/lara/lara/kexploit -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources-normal/arm64 -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/arm64 -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-Swift.h -import-objc-header /Users/ruter/Documents/GitHub/lara/lara/lara-Bridging-Header.h -working-directory /Users/ruter/Documents/GitHub/lara -no-emit-module-separately-wmo
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ptrcheck-AI5NMWBTGNCF2SE7HM1CKHYCY.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_SwiftConcurrencyShims-XMK2EM5O0XX8OTL1UKLZS8SD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ptrauth-5W8WOYVVQOTI8EPO38MOYG4LS.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/SwiftShims-5GB2VBQO6CJ2DYTPVS5Z0E5HB.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/DeveloperToolsSupport-E1MYLP1DA1PNDALPN5ASSQWCM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdarg-8TJUY0MZZEQA8Q8F65CNFTSYJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdbool-5XGRUT7VH3JC3YJ15IZ8ZQM8Q.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_AvailabilityInternal-BYL75LQ2C4QHSVY17MGO7RA1T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stddef-CUT6IE67DPC49V0AXJ578JIQW.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_float-76S1QAC3FRDXHK6XIYAMDH1ED.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_DarwinFoundation1-3815JRA1VVZZIHK2K7N5Y27TU.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_DarwinFoundation2-B1BPZ10RRWSOD2ZBPG5XHYP4M.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_limits-9KVISP7VBA7BBNUHZSLLNPNXN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/sys_types-102ATANPTGM80NDDDMRHA9U3B.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_tgmath-2C0ZOM6MTYLZ1Z928944I55JN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdint-7TDU6ACMD0T5W6U4819UG7A3B.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_DarwinFoundation3-74FQ2IKH9QZT0BF8VYSYXQ7SJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdatomic-86EZA0NY3DPR0YUOPB6PQG9MX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_intrinsics-AGM6DN4UXS1ZTM5QSLLTQCNWV.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_inttypes-2FTEZ75QMB2M4WAOZ964PE8DZ.pcm
+
+LinkAssetCatalog /Users/ruter/Documents/GitHub/lara/lara/Assets.xcassets (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-linkAssetCatalog --thinned /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/thinned --thinned-dependencies /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_dependencies_thinned --thinned-info-plist-content /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist_thinned --unthinned /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_output/unthinned --unthinned-dependencies /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_dependencies_unthinned --unthinned-info-plist-content /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist_unthinned --output /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app --plist-output /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist
+
+ProcessInfoPlistFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Info.plist /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/empty-lara.plist (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-infoPlistUtility /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/empty-lara.plist -producttype com.apple.product-type.application -genpkginfo /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/PkgInfo -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/assetcatalog_generated_info.plist -requiredArchitecture arm64 -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Info.plist
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Darwin-DRD0RIXMV5R06P2WNXFAZXDC5.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/simd-384LJD3K0YCEWVZJCSZIUET9J.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/MachO-7D8I600SGRE9OGNW3VTQ5MEQQ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ObjectiveC-6BSJJ8N1VUUYLH9NN655QK2GA.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/os_object-9DR1QXFBG0JHIGCXFLC82MHXQ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/os_workgroup-5I9TQXKC9AN65QO8HJUYXXLYX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Dispatch-16LAI9Z4JVARK71F0M5SUTL53.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Spatial-DCEA04O32Q4P89V3ZJNR0C5P3.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/XPC-CTFQ80PZIVSI1LTUDKWKKI01S.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreFoundation-EAI4LHVZK6RN7WN1M9RXL8L7Q.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/os-HEAI7CK9SHWGKCMMU2FJ31YB.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Security-EV73OPM1O9LJZ5YISY3FRGOB2.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreGraphics-6IAS55JXAXFSX7JF596BVGT3M.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CFNetwork-2Y354ALBF2YUWJ238LFB053IM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Foundation-6R5YCS78JLGQO9JXQY0Q6WJGP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreText-6L6C8PO499EUBG1Y4NI15H5VZ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ImageIO-3DK0QDO23QWO8Y58V86POBR0U.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Accessibility-B16JVIKIFGESJ6S67MWMGQ99D.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Symbols-AI1VHIQEQLC6ZP25DJ42MT1D0.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/IOSurface-8ORQT0AC7D79FK7XUVQYP2Z9T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UniformTypeIdentifiers-1Y88QLPLZK8ZD4EVWF4PI4QH0.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UserNotifications-3K2KCP556XDP90MHBUZQRY0LN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/FileProvider-3ERGAHITOFXFVA5M8SVJUSVSM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/DataDetection-7PLYO0Y6SO9K06WY42HB3JELL.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UIUtilities-3IFU7F9W10JAFBSZYZU7ACC8F.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreTransferable-BPY3PC7588GTAQSMYVGXT2ODI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/OSLog-4GPYSB0H2YWU468THYUY4XP0Y.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreData-9SHP01D1FUPLTSBIJXV1SWHXA.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/OpenGLES-CN44P9K8GD7Z7YZWK1K8G217C.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Metal-6D6VAW43UJJZCOZ32MICU9HLW.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreVideo-B6ARMNFG2USXAZDR5227KKWWP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreImage-ASJA4G80PO2LTRP1LX1STIUT7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/QuartzCore-DL2YVFN0ZZPYMOZLO7PLKERMQ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/SwiftUICore-ELG61BZS44DH4482WGP3TJ4FU.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UIKit-6K99D9C5KFTOKXONUU47ADJ4T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/SwiftUI-AGZBV0YKPVDAY62OBJHA1CCTZ.pcm
+
+SwiftGeneratePch normal arm64 Compiling\ bridging\ header (in target 'lara' from project 'lara')
+
+SwiftDriverJobDiscovery normal arm64 Compiling bridging header (in target 'lara' from project 'lara')
+
+SwiftCompile normal arm64 Compiling\ ContentView.swift,\ laraApp.swift,\ LaraController.swift,\ Logger.swift,\ GeneratedAssetSymbols.swift /Users/ruter/Documents/GitHub/lara/lara/ContentView.swift /Users/ruter/Documents/GitHub/lara/lara/laraApp.swift /Users/ruter/Documents/GitHub/lara/lara/LaraController.swift /Users/ruter/Documents/GitHub/lara/lara/Logger.swift /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/GeneratedAssetSymbols.swift /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/OSLog.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/simd.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/DeveloperToolsSupport.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/DataDetection.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreText.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Symbols.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Darwin.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Metal.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Combine.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Foundation.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Observation.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/_DarwinFoundation2.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreTransferable.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/QuartzCore.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Accessibility.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/UIKit.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/_StringProcessing.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/UniformTypeIdentifiers.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/os.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Dispatch.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Swift.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/Spatial.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/System.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreVideo.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/SwiftUI.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/ObjectiveC.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreImage.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/FileProvider.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreGraphics.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/_DarwinFoundation1.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/_Builtin_float.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/XPC.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreFoundation.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/SwiftUICore.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/CoreData.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/_DarwinFoundation3.swiftmodule/arm64e-apple-ios.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/26.0/_Concurrency.swiftmodule/arm64e-apple-ios.swiftmodule /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Metal-6D6VAW43UJJZCOZ32MICU9HLW.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_limits-9KVISP7VBA7BBNUHZSLLNPNXN.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UserNotifications-3K2KCP556XDP90MHBUZQRY0LN.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreVideo-B6ARMNFG2USXAZDR5227KKWWP.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreFoundation-EAI4LHVZK6RN7WN1M9RXL8L7Q.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/os-HEAI7CK9SHWGKCMMU2FJ31YB.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/SwiftShims-5GB2VBQO6CJ2DYTPVS5Z0E5HB.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdarg-8TJUY0MZZEQA8Q8F65CNFTSYJ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Symbols-AI1VHIQEQLC6ZP25DJ42MT1D0.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/SwiftUICore-ELG61BZS44DH4482WGP3TJ4FU.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Security-EV73OPM1O9LJZ5YISY3FRGOB2.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreImage-ASJA4G80PO2LTRP1LX1STIUT7.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_SwiftConcurrencyShims-XMK2EM5O0XX8OTL1UKLZS8SD.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Accessibility-B16JVIKIFGESJ6S67MWMGQ99D.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ObjectiveC-6BSJJ8N1VUUYLH9NN655QK2GA.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_DarwinFoundation2-B1BPZ10RRWSOD2ZBPG5XHYP4M.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/SwiftUI-AGZBV0YKPVDAY62OBJHA1CCTZ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CFNetwork-2Y354ALBF2YUWJ238LFB053IM.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ptrauth-5W8WOYVVQOTI8EPO38MOYG4LS.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ptrcheck-AI5NMWBTGNCF2SE7HM1CKHYCY.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_tgmath-2C0ZOM6MTYLZ1Z928944I55JN.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/os_object-9DR1QXFBG0JHIGCXFLC82MHXQ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/sys_types-102ATANPTGM80NDDDMRHA9U3B.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/OpenGLES-CN44P9K8GD7Z7YZWK1K8G217C.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreTransferable-BPY3PC7588GTAQSMYVGXT2ODI.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdint-7TDU6ACMD0T5W6U4819UG7A3B.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_AvailabilityInternal-BYL75LQ2C4QHSVY17MGO7RA1T.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Darwin-DRD0RIXMV5R06P2WNXFAZXDC5.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreText-6L6C8PO499EUBG1Y4NI15H5VZ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Dispatch-16LAI9Z4JVARK71F0M5SUTL53.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreGraphics-6IAS55JXAXFSX7JF596BVGT3M.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_intrinsics-AGM6DN4UXS1ZTM5QSLLTQCNWV.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/ImageIO-3DK0QDO23QWO8Y58V86POBR0U.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/IOSurface-8ORQT0AC7D79FK7XUVQYP2Z9T.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/CoreData-9SHP01D1FUPLTSBIJXV1SWHXA.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UIUtilities-3IFU7F9W10JAFBSZYZU7ACC8F.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_float-76S1QAC3FRDXHK6XIYAMDH1ED.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_DarwinFoundation1-3815JRA1VVZZIHK2K7N5Y27TU.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/OSLog-4GPYSB0H2YWU468THYUY4XP0Y.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_DarwinFoundation3-74FQ2IKH9QZT0BF8VYSYXQ7SJ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/DeveloperToolsSupport-E1MYLP1DA1PNDALPN5ASSQWCM.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/QuartzCore-DL2YVFN0ZZPYMOZLO7PLKERMQ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Spatial-DCEA04O32Q4P89V3ZJNR0C5P3.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdatomic-86EZA0NY3DPR0YUOPB6PQG9MX.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/DataDetection-7PLYO0Y6SO9K06WY42HB3JELL.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Foundation-6R5YCS78JLGQO9JXQY0Q6WJGP.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/FileProvider-3ERGAHITOFXFVA5M8SVJUSVSM.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stdbool-5XGRUT7VH3JC3YJ15IZ8ZQM8Q.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_inttypes-2FTEZ75QMB2M4WAOZ964PE8DZ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/simd-384LJD3K0YCEWVZJCSZIUET9J.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/_Builtin_stddef-CUT6IE67DPC49V0AXJ578JIQW.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UIKit-6K99D9C5KFTOKXONUU47ADJ4T.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/UniformTypeIdentifiers-1Y88QLPLZK8ZD4EVWF4PI4QH0.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/os_workgroup-5I9TQXKC9AN65QO8HJUYXXLYX.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/XPC-CTFQ80PZIVSI1LTUDKWKKI01S.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/MachO-7D8I600SGRE9OGNW3VTQ5MEQQ.pcm /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-dependencies-1.json /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-primary-Bridging-header.pch (in target 'lara' from project 'lara')
+
+CompileSwift normal arm64 (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    
+/Users/ruter/Documents/GitHub/lara/lara/Logger.swift:104:13: warning: variable 'text' was never mutated; consider changing to 'let' constant
+        var text = pendingLine + chunk
+        ~~~ ^
+        let
+
+SwiftDriverJobDiscovery normal arm64 Compiling ContentView.swift, laraApp.swift, LaraController.swift, Logger.swift, GeneratedAssetSymbols.swift (in target 'lara' from project 'lara')
+
+SwiftDriver\ Compilation\ Requirements lara normal arm64 com.apple.xcode.tools.swift.compiler (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name lara -O -whole-module-optimization -enforce-exclusivity\=checked @/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftFileList -default-isolation\=MainActor -enable-bare-slash-regex -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -target arm64-apple-ios18.0 -g -module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -F /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64 -c -num-threads 14 -Xcc -ivfsstatcache -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache -output-file-map /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_const_extract_protocols.json -Xcc -iquote -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-generated-files.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-own-target-headers.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-all-target-headers.hmap -Xcc -iquote -Xcc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara-project-headers.hmap -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/include -Xcc -I/Users/ruter/Documents/GitHub/lara/lara/kexploit -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources-normal/arm64 -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/arm64 -Xcc -I/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-Swift.h -import-objc-header /Users/ruter/Documents/GitHub/lara/lara/lara-Bridging-Header.h -working-directory /Users/ruter/Documents/GitHub/lara -no-emit-module-separately-wmo
+
+SwiftMergeGeneratedHeaders /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/lara-Swift.h /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-Swift.h (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-swiftHeaderTool -arch arm64 /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-Swift.h -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/DerivedSources/lara-Swift.h
+
+Copy /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/arm64-apple-ios.abi.json /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.abi.json (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.abi.json /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/arm64-apple-ios.abi.json
+
+Copy /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/arm64-apple-ios.swiftdoc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftdoc (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftdoc /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/arm64-apple-ios.swiftdoc
+
+Copy /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/arm64-apple-ios.swiftmodule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/arm64-apple-ios.swiftmodule
+
+Copy /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftsourceinfo (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftsourceinfo /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo
+
+ScanDependencies /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.o /Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    
+    Using response file: /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
+    
+    builtin-ScanDependencies -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.o.scan -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Werror\=return-type -Wdocumentation -Wunreachable-code -Wquoted-include-in-framework-header -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wimplicit-retain-self -Wduplicate-method-match -Wno-missing-braces -Wparentheses -Wswitch -Wunused-function -Wno-unused-label -Wno-unused-parameter -Wunused-variable -Wunused-value -Wempty-body -Wuninitialized -Wconditional-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wconstant-conversion -Wint-conversion -Wbool-conversion -Wenum-conversion -Wno-float-conversion -Wnon-literal-null-conversion -Wobjc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wundeclared-selector -Wdeprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Winfinite-recursion -Wcomma -Wblock-capture-autoreleasing -Wstrict-prototypes -Wno-semicolon-before-method-body -Wunguarded-availability @/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.d --serialize-diagnostics /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.dia -c /Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.o
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stddef-8JM77RYXF8LD7P5YSRI2ZHNO8.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stddef-8JM77RYXF8LD7P5YSRI2ZHNO8.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdarg-2P7L6DRE91A5L7GZIJZX40HMR.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdarg-2P7L6DRE91A5L7GZIJZX40HMR.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/ptrauth-1L2GPOMPC290VONCMF4HX81FM.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/ptrauth-1L2GPOMPC290VONCMF4HX81FM.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/ptrcheck-9Y76YCUZ67YBQNG2A94TGMAL7.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/ptrcheck-9Y76YCUZ67YBQNG2A94TGMAL7.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_AvailabilityInternal-1WYXEC2APXULH3S1Q6XHISBZJ.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_AvailabilityInternal-1WYXEC2APXULH3S1Q6XHISBZJ.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_float-BNL4DLZCYQM2L1JHODIS5L5BS.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_float-BNL4DLZCYQM2L1JHODIS5L5BS.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdbool-29WDZR5UZJF97MMG0174P1Q56.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdbool-29WDZR5UZJF97MMG0174P1Q56.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation1-9ZV57U7EWCRWJO4T4GT8QYWPF.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation1-9ZV57U7EWCRWJO4T4GT8QYWPF.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_limits-8NPYFN1BKOSNZ5APPMV0A8B9V.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_limits-8NPYFN1BKOSNZ5APPMV0A8B9V.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation2-6X832H8M8NZUUO30B899S80QW.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation2-6X832H8M8NZUUO30B899S80QW.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdint-7BBXTM9QWNRM7RA5C3MIGXNNO.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdint-7BBXTM9QWNRM7RA5C3MIGXNNO.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdatomic-CVIJTFXFL79Z484OVHJI08J4G.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdatomic-CVIJTFXFL79Z484OVHJI08J4G.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation3-3FTLHPGQ6AKOJ0R03USVVK60Z.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_DarwinFoundation3-3FTLHPGQ6AKOJ0R03USVVK60Z.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_inttypes-39UTJDSRK02QSIR5VR2R0EBOO.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_inttypes-39UTJDSRK02QSIR5VR2R0EBOO.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-2E52RI3LR2DH0MHR79MHCFLLV.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-2E52RI3LR2DH0MHR79MHCFLLV.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/ObjectiveC-4QIMO9WTPG44ZEL6PT1PUB7UW.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/ObjectiveC-4QIMO9WTPG44ZEL6PT1PUB7UW.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/MachO-3QFWVGHJU7XXR1TYRC112LCSI.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/MachO-3QFWVGHJU7XXR1TYRC112LCSI.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_object-5RKHWJ008MLHERRTSBG7DNBMY.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_object-5RKHWJ008MLHERRTSBG7DNBMY.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_workgroup-7DN5CJ6U3ZIZH8IAIKZWOYPXS.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_workgroup-7DN5CJ6U3ZIZH8IAIKZWOYPXS.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Dispatch-3NE1SF95ISAR3HQHWOW8JSQQT.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Dispatch-3NE1SF95ISAR3HQHWOW8JSQQT.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/XPC-121AMU45TOKM8C9PPVT2LEZHW.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/XPC-121AMU45TOKM8C9PPVT2LEZHW.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreFoundation-63YA0FGD42F7NC09ACZ4INAAJ.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreFoundation-63YA0FGD42F7NC09ACZ4INAAJ.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/CFNetwork-MTSN6RVU70HFCT8PSTRIAR57.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/CFNetwork-MTSN6RVU70HFCT8PSTRIAR57.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Security-6HKBRGNDCJ25WENI4J86DVNRL.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Security-6HKBRGNDCJ25WENI4J86DVNRL.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-1SKWCL12V9I6GS4B4UFS1VKDV.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-1SKWCL12V9I6GS4B4UFS1VKDV.scan
+
+PrecompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/IOSurface-7L2CYEDLAA5IZ9OJPB0JXCGK1.scan
+    cd /
+    builtin-precompileModule /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/IOSurface-7L2CYEDLAA5IZ9OJPB0JXCGK1.scan
+
+CompileC /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.o /Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    
+    Using response file: /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
+    
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/ruter/Documents/GitHub/lara/build/DerivedData/SDKStatCaches.noindex/iphoneos26.0-23A339-81ce72e5b06c9602b9d30b56f2eed08a.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/ruter/Documents/GitHub/lara/build/DerivedData/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Werror\=return-type -Wdocumentation -Wunreachable-code -Wquoted-include-in-framework-header -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wimplicit-retain-self -Wduplicate-method-match -Wno-missing-braces -Wparentheses -Wswitch -Wunused-function -Wno-unused-label -Wno-unused-parameter -Wunused-variable -Wunused-value -Wempty-body -Wuninitialized -Wconditional-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wconstant-conversion -Wint-conversion -Wbool-conversion -Wenum-conversion -Wno-float-conversion -Wnon-literal-null-conversion -Wobjc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wundeclared-selector -Wdeprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Winfinite-recursion -Wcomma -Wblock-capture-autoreleasing -Wstrict-prototypes -Wno-semicolon-before-method-body -Wunguarded-availability @/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.d --serialize-diagnostics /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.dia -c /Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/darksword-9fb3a2cf4e29dbf71957dfaf3a4fae5d.o
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:134:22: warning: a function declaration without a prototype is deprecated in all versions of C [-Wstrict-prototypes]
+  134 | void init_target_file()
+      |                      ^
+      |                       void
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:174:40: warning: passing 'volatile mach_vm_address_t *' (aka 'volatile unsigned long long *') to parameter of type 'mach_vm_address_t *' (aka 'unsigned long long *') discards qualifiers [-Wincompatible-pointer-types-discards-qualifiers]
+  174 |                                        &freeTarget,
+      |                                        ^~~~~~~~~~~
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:64:68: note: passing argument to parameter 'address' here
+   64 | kern_return_t mach_vm_map(vm_map_t target_task, mach_vm_address_t *address, mach_vm_size_t size, mach_vm_offset_t mask, int flags, mem_entry_name_port_t object, memory_object_offset_t offset, boolean_t copy, vm_prot_t cur_protection, vm_prot_t max_protection, vm_inherit_t inheritance);
+      |                                                                    ^
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:211:13: warning: 'syscall' is deprecated: first deprecated in iOS 10.0 - syscall(2) is unsupported; please switch to a supported interface. For SYS_kdebug_trace use kdebug_signpost(). [-Wdeprecated-declarations]
+  211 |     int r = syscall(336, 6, getpid(), 3, outputSocketPort, socketInfo, 0x400);
+      |             ^
+In module '_DarwinFoundation3' imported from /Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:3:
+/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/usr/include/unistd.h:754:6: note: 'syscall' has been explicitly marked deprecated here
+  754 | int      syscall(int, ...);
+      |          ^
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:211:9: warning: unused variable 'r' [-Wunused-variable]
+  211 |     int r = syscall(336, 6, getpid(), 3, outputSocketPort, socketInfo, 0x400);
+      |         ^
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:317:27: warning: possible misuse of comma operator here [-Wcomma]
+  317 |     freeTarget = pcAddress,
+      |                           ^
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:317:5: note: cast expression to void to silence warning
+  317 |     freeTarget = pcAddress,
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+      |     (void)(               )
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:355:17: warning: unused variable 'r' [-Wunused-variable]
+  355 |             int r = pread(readFd, buffer, size, 0x3f00 + offset);
+      |                 ^
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:336:13: warning: implicit conversion loses integer precision: 'ssize_t' (aka 'long') to 'int' [-Wshorten-64-to-32]
+  336 |         w = pwritev(readFd, &iov, 1, 0x3f00);
+      |           ~ ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:355:21: warning: implicit conversion loses integer precision: 'ssize_t' (aka 'long') to 'int' [-Wshorten-64-to-32]
+  355 |             int r = pread(readFd, buffer, size, 0x3f00 + offset);
+      |                 ~   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m:436:34: warning: implicit conversion loses integer precision: 'size_t' (aka 'unsigned long') to 'socklen_t' (aka 'unsigned int') [-Wshorten-64-to-32]
+  436 |     socklen_t read_data_length = size;
+      |               ~~~~~~~~~~~~~~~~   ^~~~
+9 warnings generated.
+
+Ld /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara normal (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios18.0 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk -Os -L/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos -L/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -F/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos -F/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos -filelist /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_lto.o -Xlinker -dependency_info -Xlinker /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_dependency_info.dat -fobjc-arc -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule @/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-linker-args.resp -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara
+
+CopySwiftLibs /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara --scan-folder /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Frameworks --scan-folder /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/PlugIns --scan-folder /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/SystemExtensions --scan-folder /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+Ignoring --strip-bitcode because --sign was not passed
+
+ExtractAppIntentsMetadata (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name lara --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk --xcode-version 17A400 --platform-family iOS --deployment-target 18.0 --bundle-identifier com.roooot.lara --output /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app --target-triple arm64-apple-ios18.0 --binary-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara --dependency-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara_dependency_info.dat --stringsdata-file /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftFileList --metadata-file-list /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyMetadataFileList --static-metadata-file-list /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyStaticMetadataFileList --swift-const-vals-list /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-03-24 09:54:41.898 appintentsmetadataprocessor[94528:60591416] Starting appintentsmetadataprocessor export
+2026-03-24 09:54:41.899 appintentsmetadataprocessor[94528:60591416] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+GenerateDSYMFile /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app.dSYM /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara -o /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app.dSYM
+
+AppIntentsSSUTraining (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Info.plist --temp-dir-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/ssu --bundle-id com.roooot.lara --product-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app --extracted-metadata-path /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/Metadata.appintents --metadata-file-list /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/lara.DependencyMetadataFileList --archive-ssu-assets
+2026-03-24 09:54:41.914 appintentsnltrainingprocessor[94531:60591422] Parsing options for appintentsnltrainingprocessor
+2026-03-24 09:54:41.914 appintentsnltrainingprocessor[94531:60591422] No AppShortcuts found - Skipping.
+
+RegisterExecutionPolicyException /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-RegisterExecutionPolicyException /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app
+
+Validate /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    builtin-validationUtility /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app -validate-for-store -shallow-bundle -infoplist-subpath Info.plist
+
+Touch /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app (in target 'lara' from project 'lara')
+    cd /Users/ruter/Documents/GitHub/lara
+    /usr/bin/touch -c /Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app
+
+warning: Skipping duplicate build file in Compile Sources build phase: /Users/ruter/Documents/GitHub/lara/lara/kexploit/darksword.m (in target 'lara' from project 'lara')
+** BUILD SUCCEEDED **
+

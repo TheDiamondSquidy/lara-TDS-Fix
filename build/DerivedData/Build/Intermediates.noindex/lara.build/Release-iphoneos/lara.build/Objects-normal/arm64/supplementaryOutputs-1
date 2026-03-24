@@ -1,0 +1,12 @@
+{
+  "/Users/ruter/Documents/GitHub/lara/lara/ContentView.swift" : {
+    "abi-baseline-json" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.abi.json",
+    "const-values" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-primary.swiftconstvalues",
+    "dependencies" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-primary.d",
+    "diagnostics" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-primary.dia",
+    "objc-header" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara-Swift.h",
+    "swiftdoc" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftdoc",
+    "swiftmodule" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftmodule",
+    "swiftsourceinfo" : "/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Intermediates.noindex/lara.build/Release-iphoneos/lara.build/Objects-normal/arm64/lara.swiftsourceinfo"
+  }
+}

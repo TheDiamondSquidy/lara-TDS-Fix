@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/ruter/Documents/GitHub/lara/build/DerivedData/Build/Products/Release-iphoneos/lara.app/lara'
+relocations:     []
+...

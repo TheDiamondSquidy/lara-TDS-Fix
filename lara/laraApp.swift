@@ -9,9 +9,21 @@ import SwiftUI
 
 @main
 struct laraApp: App {
+    init() {
+        globallogger.startCapture()
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            TabView {
+                Tab("lara", systemImage: "ant.fill") {
+                    ContentView()
+                }
+
+                Tab("Logs", systemImage: "text.document.fill") {
+                    LogsView(logger: globallogger)
+                }
+            }
         }
     }
 }

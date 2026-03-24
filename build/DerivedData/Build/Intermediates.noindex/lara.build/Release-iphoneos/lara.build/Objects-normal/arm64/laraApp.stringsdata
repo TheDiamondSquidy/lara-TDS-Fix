@@ -1,0 +1,24 @@
+{
+  "source": "/Users/ruter/Documents/GitHub/lara/lara/laraApp.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "lara",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 19
+        }
+      },
+      {
+        "comment": "",
+        "key": "Logs",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 23
+        }
+      }
+    ]
+  },
+  "version": 1
+}
