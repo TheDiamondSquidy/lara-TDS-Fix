@@ -4,9 +4,10 @@
 //
 //  Created by ruter on 23.03.26.
 //
-
 import SwiftUI
 import notify
+import UniformTypeIdentifiers
+
 
 struct ContentView: View {
     @ObservedObject private var mgr = laramgr.shared
@@ -14,7 +15,6 @@ struct ContentView: View {
     @State private var pid: pid_t = getpid()
     @State private var hasoffsets = haskernproc()
     @State private var showresetalert = false
-    @State private var showfontsheet = false
     
     var body: some View {
         NavigationStack {
@@ -73,37 +73,26 @@ struct ContentView: View {
                     }
 
                     Section("Kernel File System") {
-                        Button("Initialize KFS") {
+                        Button {
                             mgr.kfsinit()
+                        } label: {
+                            if !mgr.kfsready {
+                                Text("Initialise KFS")
+                            } else {
+                                HStack {
+                                    Text("Initialised KFS")
+                                    Spacer()
+                                    Image(systemName: "checkmark.circle")
+                                        .foregroundColor(.green)
+                                }
+                            }
                         }
-                        .disabled(!mgr.dsready)
+                        .disabled(!mgr.dsready || mgr.kfsready)
                         
-                        Button("Font Overwrite") {
-                            showfontsheet = true
-                        }
-                        .disabled(!mgr.kfsready)
-                        .confirmationDialog("Set System Font", isPresented: $showfontsheet, titleVisibility: .visible) {
-                            Button("Comic Sans MS") {
-                                let success = mgr.kfsoverwrite(target: laramgr.fontpath, withBundledFont: "Comic Sans SFUI")
-                                
-                                if success {
-                                    mgr.logmsg("font changed to Comic Sans MS")
-                                } else {
-                                    mgr.logmsg("failed to change font")
-                                }
+                        if mgr.kfsready {
+                            NavigationLink("Font Overwrite") {
+                                FontPicker(mgr: mgr)
                             }
-                            
-                            Button("SFUI (Normal Font)") {
-                                let success = mgr.kfsoverwrite(target: laramgr.fontpath, withBundledFont: "SFUI")
-                                
-                                if success {
-                                    mgr.logmsg("font changed to SFUI")
-                                } else {
-                                    mgr.logmsg("failed to change font")
-                                }
-                            }
-                            
-                            Button("Cancel", role: .cancel) { }
                         }
                         
                         HStack {

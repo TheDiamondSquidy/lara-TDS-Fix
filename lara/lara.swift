@@ -16,13 +16,15 @@ struct lara: App {
     var body: some Scene {
         WindowGroup {
             TabView {
-                Tab("lara", systemImage: "ant.fill") {
-                    ContentView()
-                }
+                ContentView()
+                    .tabItem {
+                        Label("lara", systemImage: "ant.fill")
+                    }
 
-                Tab("Logs", systemImage: "text.document.fill") {
-                    LogsView(logger: globallogger)
-                }
+                LogsView(logger: globallogger)
+                    .tabItem {
+                        Label("Logs", systemImage: "text.document.fill")
+                    }
             }
             .onAppear {
                 init_offsets()

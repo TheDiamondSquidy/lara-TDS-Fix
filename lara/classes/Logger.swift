@@ -23,6 +23,8 @@ class Logger: ObservableObject {
     private var panding = ""
     private var ogstdout: Int32 = -1
     private var ogstderr: Int32 = -1
+    private var logFileURL: URL?
+    private var logFileHandle: FileHandle?
     private let ignoredLogSubstrings = [
         "Faulty glyph",
         "outline detected - replacing with a space/null glyph",
@@ -32,7 +34,9 @@ class Logger: ObservableObject {
         "NSError"
     ]
 
-    init() {}
+    init() {
+        setupLogFile()
+    }
 
     func log(_ message: String) {
         DispatchQueue.main.async {
@@ -50,6 +54,7 @@ class Logger: ObservableObject {
             self.lastwasdivider = false
         }
 
+        appendToFile([message])
         emit(message)
     }
 
@@ -125,6 +130,7 @@ class Logger: ObservableObject {
             DispatchQueue.main.async {
                 self.logs.append(contentsOf: filtered)
             }
+            appendToFile(filtered)
             for line in filtered {
                 emit(line)
             }
@@ -150,6 +156,32 @@ class Logger: ObservableObject {
             }
         }
         return false
+    }
+
+    private func setupLogFile() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let url = docs.appendingPathComponent("lara.log")
+        logFileURL = url
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [
+                FileAttributeKey.protectionKey: FileProtectionType.none
+            ])
+        } else {
+            try? FileManager.default.setAttributes([FileAttributeKey.protectionKey: FileProtectionType.none], ofItemAtPath: url.path)
+        }
+        logFileHandle = try? FileHandle(forWritingTo: url)
+        try? logFileHandle?.seekToEnd()
+    }
+
+    private func appendToFile(_ lines: [String]) {
+        guard let handle = logFileHandle else { return }
+        let filtered = lines.filter { !shouldIgnore($0) }
+        guard !filtered.isEmpty else { return }
+        let text = filtered.joined(separator: "\n") + "\n"
+        if let data = text.data(using: .utf8) {
+            try? handle.write(contentsOf: data)
+            try? handle.synchronize()
+        }
     }
 }
 
