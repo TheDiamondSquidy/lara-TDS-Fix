@@ -12,7 +12,7 @@ struct SettingsView: View {
     @Binding var hasoffsets: Bool
     @State private var showresetalert: Bool = false
     @State private var downloadingkernelcache = false
-    @AppStorage("loggernobullshit") private var loggernobullshit: Bool = false
+    @AppStorage("loggernobullshit") private var loggernobullshit: Bool = true
     @AppStorage("keepalive") private var iskeepalive: Bool = true
     @AppStorage("showfmintabs") private var showfmintabs: Bool = true
     @AppStorage("selectedmethod") private var selectedmethod: method = .vfs

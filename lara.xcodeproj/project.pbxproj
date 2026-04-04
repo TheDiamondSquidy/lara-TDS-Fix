@@ -40,8 +40,6 @@
 		CC70C4A12F78D4C10052726B /* Exceptions for "lara" folder in "lara" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				assets/darksword.icon,
-				assets/icon2.icon,
 				Info.plist,
 				other/Assets.xcassets,
 			);
@@ -343,7 +341,7 @@
 					"$(PROJECT_DIR)/lara/lib",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.roooot.lara;
+				PRODUCT_BUNDLE_IDENTIFIER = com.roooot.lara.DN4S6CXFWY;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -390,7 +388,7 @@
 					"$(PROJECT_DIR)/lara/lib",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.roooot.lara;
+				PRODUCT_BUNDLE_IDENTIFIER = com.roooot.lara.DN4S6CXFWY;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

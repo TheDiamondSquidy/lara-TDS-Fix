@@ -16,7 +16,7 @@ struct lara: App {
     @State var showunsupported: Bool = false
     @State private var selectedtab: Int = 1
     private let keepalivekey = "keepalive"
-    private let showfmintabskey = "showfmintabs"
+    @AppStorage("showfmintabs") private var showfmintabs: Bool = true
 
     init() {
         if g_isunsupported {
@@ -41,7 +41,7 @@ struct lara: App {
     var body: some Scene {
         WindowGroup {
             TabView(selection: $selectedtab) {
-                if mgr.vfsready && UserDefaults.standard.bool(forKey: showfmintabskey) {
+                if mgr.vfsready && showfmintabs {
                     SantanderView(startPath: "/")
                         .tabItem {
                             Image(systemName: "document.badge.gearshape.fill")
@@ -76,7 +76,7 @@ struct lara: App {
                 }
             }
             .alert(isPresented: $showunsupported) {
-                .init(title: Text("Unsupported"), message: Text("Lara is currently not supported on this device. Possible reasons:\nYour device is iOS newer than ios 26.0.1\nYour device is older than iOS 17.0\nYour device has MIE\nYou installed lara via LiveContainer\n\nLara will probably not work."))
+                .init(title: Text("Unsupported"), message: Text("Lara is currently not supported on this device. Possible reasons:\nYour device is newer than iOS 26.0.1\nYour device is older than iOS 17.0\nYour device has MIE\nYou installed lara via LiveContainer\n\nLara will probably not work."))
             }
         }
     }
