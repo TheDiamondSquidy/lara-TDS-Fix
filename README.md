@@ -3,7 +3,9 @@ a beautiful kexploit.
 > star this repo please :P
 
 ## support
-lara will at its absolute best only ever support versions up to iOS 26.0.1/iOS 18.7.1. the exploit was patched after those versions.
+lara will at its absolute best only ever support versions up to iOS 26.0.1/iOS 18.7.1. the exploit was patched after those versions.<br><br><a href="https://celloserenity.github.io/altdirect/?url=https://raw.githubusercontent.com/rooootdev/lara/refs/heads/main/source.json" target="_blank">
+   <img src="https://github.com/CelloSerenity/altdirect/blob/main/assets/png/AltSource_Blue.png?raw=true" alt="Add AltSource" width="200">
+</a>
 
 Currently tested on iOS 17.2.1 - 26.0.1.
 If you run lara on your device, and it ends up working, please contact me on [discord](https://discord.com/users/919268666305024010) (@roooot.dev) and tell me:
