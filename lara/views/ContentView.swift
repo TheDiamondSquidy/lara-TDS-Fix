@@ -356,11 +356,9 @@ struct ContentView: View {
                                 ToolsView()
                             }
                         }
-                        
-                        if #unavailable(iOS 18.2) {
-                            Button("Respring") {
-                                mgr.respring()
-                            }
+            
+                        Button("Respring") {
+                            mgr.respring()
                         }
                         
                         Button("Panic!") {
