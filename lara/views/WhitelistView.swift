@@ -3,6 +3,7 @@
 //  lara
 //
 //  Created by ruter on 29.03.26.
+//  modified and fixed by claude, implemented by TheDiamondSquidy
 //
 
 import SwiftUI
@@ -84,6 +85,8 @@ struct WhitelistView: View {
         }
     }
 
+    // MARK: - Actions
+
     private func loadall() {
         guard mgr.sbxready else {
             status = "sandbox escape not ready"
@@ -137,35 +140,61 @@ struct WhitelistView: View {
         loadall()
     }
 
+    // MARK: - I/O
+
     private func sbxread(path: String, maxSize: Int) -> Data? {
         do {
             let url = URL(fileURLWithPath: path)
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
-            if data.count > maxSize {
-                return data.prefix(maxSize)
-            }
-            return data
+            return data.count > maxSize ? data.prefix(maxSize) : data
         } catch {
             return nil
         }
     }
 
+    /// Writes data to `path` by first writing to a temp file in the same
+    /// directory and then atomically renaming it into place. This avoids
+    /// opening the protected inode directly with O_TRUNC, which is what
+    /// causes EPERM on files guarded by mobileidentityd on hybrid jailbreaks.
     private func sbxwrite(path: String, data: Data) -> String {
-        let fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
-        if fd == -1 {
-            return vfsfallback(path: path, data: data, reason: "open failed: errno=\(errno) \(String(cString: strerror(errno)))")
-        }
-        defer { close(fd) }
+        let tmp = path + ".laratmp"
 
-        let result = data.withUnsafeBytes { ptr in
+        // Write payload to the temp file
+        let fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+        guard fd != -1 else {
+            return vfsfallback(
+                path: path, data: data,
+                reason: "open tmp failed: errno=\(errno) \(String(cString: strerror(errno)))"
+            )
+        }
+
+        let written = data.withUnsafeBytes { ptr in
             write(fd, ptr.baseAddress, ptr.count)
         }
+        close(fd)
 
-        if result == -1 {
-            return vfsfallback(path: path, data: data, reason: "write failed: errno=\(errno) \(String(cString: strerror(errno)))")
+        guard written != -1 else {
+            unlink(tmp)
+            return vfsfallback(
+                path: path, data: data,
+                reason: "write tmp failed: errno=\(errno) \(String(cString: strerror(errno)))"
+            )
         }
 
-        return "ok (\(result) bytes)"
+        // Atomically rename the temp file over the target.
+        // rename(2) operates at the directory level and bypasses the guarded
+        // inode, succeeding where O_TRUNC on the original path would not.
+        if rename(tmp, path) == 0 {
+            return "ok (\(written) bytes via rename)"
+        }
+
+        // Rename failed — clean up and fall through to VFS
+        let renameErrno = errno
+        unlink(tmp)
+        return vfsfallback(
+            path: path, data: data,
+            reason: "rename failed: errno=\(renameErrno) \(String(cString: strerror(renameErrno)))"
+        )
     }
 
     private func vfsfallback(path: String, data: Data, reason: String) -> String {
@@ -175,6 +204,8 @@ struct WhitelistView: View {
         let ok = mgr.vfsoverwritewithdata(target: path, data: data)
         return ok ? "ok (vfs overwrite)" : reason + " | vfs overwrite failed"
     }
+
+    // MARK: - Rendering
 
     private func render(data: Data) -> String {
         if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
