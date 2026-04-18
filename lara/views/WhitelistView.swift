@@ -19,8 +19,8 @@ struct WhitelistView: View {
 
     /// The result of attempting to read a blacklist file.
     private enum ReadResult {
-        case notPresent          // file doesn't exist — device is clean
-        case content(String)     // file exists and was read successfully
+        case notPresent          // file doesn't exist or is empty — device is clean
+        case content(String)     // file exists and has meaningful content
         case readError(String)   // file exists but couldn't be read
     }
 
@@ -34,7 +34,7 @@ struct WhitelistView: View {
     @State private var status: String?
     @State private var patching = false
 
-    /// True only if at least one blacklist file was actually found on disk.
+    /// True only if at least one blacklist file exists and has content.
     private var anyFilePresent: Bool {
         results.values.contains { if case .content = $0 { return true }; return false }
     }
@@ -60,13 +60,12 @@ struct WhitelistView: View {
                     Button("Patch (Empty Plist)") {
                         patchall()
                     }
-                    // Only enable patching when there is actually something to patch
                     .disabled(!mgr.sbxready || patching || !anyFilePresent)
                 } header: {
                     Text("Actions")
                 } footer: {
                     if !results.isEmpty && !anyFilePresent {
-                        Text("No blacklist files found — this device does not appear to be flagged.")
+                        Text("No blacklist entries found — this device does not appear to be flagged.")
                     } else {
                         Text("Overwrites MobileIdentityData blacklist files with an empty plist.")
                     }
@@ -147,7 +146,7 @@ struct WhitelistView: View {
 
     private func patchall() {
         guard mgr.sbxready, anyFilePresent else {
-            status = "nothing to patch — no blacklist files present"
+            status = "nothing to patch — no blacklist entries present"
             return
         }
         patching = true
@@ -165,7 +164,6 @@ struct WhitelistView: View {
         var failures: [String] = []
 
         for f in files {
-            // Only attempt to write files that actually exist
             guard case .content = results[f.path] else { continue }
             let result = sbxwrite(path: f.path, data: data)
             if !result.hasPrefix("ok") {
@@ -184,32 +182,50 @@ struct WhitelistView: View {
 
     // MARK: - I/O
 
-    /// Reads a file, distinguishing between "doesn't exist" (clean device)
-    /// and "exists but unreadable" (permission/MACF issue).
+    /// Reads a file and classifies the result:
+    /// - `.notPresent` if the file doesn't exist OR if its plist is empty
+    ///   (an empty Rejections.plist means no rejections have been recorded,
+    ///   which is indistinguishable from the file not existing in terms of
+    ///   whether the device is blacklisted)
+    /// - `.content` if the file exists and contains meaningful data
+    /// - `.readError` if the file exists but couldn't be read
     private func sbxread(path: String, maxSize: Int) -> ReadResult {
-        let fm = FileManager.default
-
-        // Check existence before attempting a read so we can give the right
-        // result for a clean device vs a permission failure on an existing file.
-        let exists = fm.fileExists(atPath: path) || (mgr.vfsready && vfsExists(path: path))
+        let exists = FileManager.default.fileExists(atPath: path)
+            || (mgr.vfsready && vfsExists(path: path))
 
         guard exists else {
             return .notPresent
         }
 
         // Attempt 1: direct read
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-            let trimmed = data.count > maxSize ? data.prefix(maxSize) : data
-            return .content(render(data: trimmed))
+        let data: Data?
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
+            data = d.count > maxSize ? d.prefix(maxSize) : d
+        } else if mgr.vfsready {
+            // Attempt 2: VFS fallback
+            data = mgr.vfsread(path: path, maxSize: maxSize)
+        } else {
+            data = nil
         }
 
-        // Attempt 2: VFS fallback
-        if mgr.vfsready, let data = mgr.vfsread(path: path, maxSize: maxSize) {
-            return .content(render(data: data))
+        guard let data = data else {
+            let errDesc = String(cString: strerror(errno))
+            return .readError("errno=\(errno) \(errDesc)\(mgr.vfsready ? " | vfs returned nil" : " | vfs not ready")")
         }
 
-        let errDesc = String(cString: strerror(errno))
-        return .readError("errno=\(errno) \(errDesc)\(mgr.vfsready ? " | vfs returned nil" : " | vfs not ready")")
+        // Treat an empty plist (empty dict or empty array) the same as the
+        // file not existing — a Rejections.plist with no entries is not a
+        // sign the device is blacklisted, just that mobileidentityd created
+        // the file as bookkeeping without recording any actual bans.
+        if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) {
+            let isEmpty = (plist as? [AnyHashable: Any])?.isEmpty == true
+                       || (plist as? [Any])?.isEmpty == true
+            if isEmpty {
+                return .notPresent
+            }
+        }
+
+        return .content(render(data: data))
     }
 
     /// Lightweight existence check via VFS for paths not reachable by FileManager.
@@ -279,4 +295,3 @@ struct WhitelistView: View {
         return data.count > maxBytes ? hex + "\n... (\(data.count) bytes total)" : hex
     }
 }
-
