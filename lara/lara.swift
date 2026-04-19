@@ -35,6 +35,7 @@ struct lara: App {
         if UserDefaults.standard.string(forKey: "selectedmethod") == nil {
             UserDefaults.standard.set(method.sbx.rawValue, forKey: "selectedmethod")
         }
+        
         if g_isunsupported {
             showunsupported = true
         }

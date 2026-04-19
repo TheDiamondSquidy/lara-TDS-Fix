@@ -64,14 +64,6 @@ struct ContentView: View {
                         .disabled(mgr.dsrunning)
                         .disabled(mgr.dsready)
 
-                        HStack {
-                            Text("kernproc:")
-                            Spacer()
-                            Text(String(format: "0x%llx", getrootvnode()))
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-
                         if mgr.dsready {
                             HStack {
                                 Text("kernel_base:")
@@ -95,7 +87,12 @@ struct ContentView: View {
                         if g_isunsupported {
                             Text("Your device/installation method may not be supported.")
                         }
+                        
+                        if isdebugged() {
+                            Text("Not available while debugger is attached.")
+                        }
                     }
+                    .disabled(isdebugged())
 
                     Section {
                         if selectedmethod == .vfs {
