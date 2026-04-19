@@ -25,7 +25,7 @@ struct RemoteView: View {
 
                 Button {
                     run("Status Bar Time Format") {
-                        status_bar_tweak()
+                        status_bar_tweak(mgr.sbProc)
                         return "status_bar_tweak() done"
                     }
                 } label: {
@@ -35,7 +35,7 @@ struct RemoteView: View {
 
                 Button {
                     run("Hide Icon Labels") {
-                        let hidden = hide_icon_labels()
+                        let hidden = hide_icon_labels(mgr.sbProc)
                         return "hide_icon_labels() -> \(hidden)"
                     }
                 } label: {
@@ -61,11 +61,21 @@ struct RemoteView: View {
 
                 Button {
                     run("Apply Dock Columns=\(dockColumns)") {
-                        let result = set_dock_icon_count(Int32(dockColumns))
+                        let result = set_dock_icon_count(mgr.sbProc, Int32(dockColumns))
                         return "set_dock_icon_count(\(dockColumns)) -> \(result)"
                     }
                 } label: {
                     Text("Apply Dock Columns")
+                }
+                .disabled(!mgr.remotecallrunning || isRunning)
+
+                Button {
+                    run("Enable Upside Down") {
+                        let result = enable_upside_down(mgr.sbProc)
+                        return "enable_upside_down() -> \(result)"
+                    }
+                } label: {
+                    Text("Enable Upside Down")
                 }
                 .disabled(!mgr.remotecallrunning || isRunning)
             } header: {

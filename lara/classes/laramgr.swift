@@ -40,6 +40,8 @@ final class laramgr: ObservableObject {
     @Published var sbxfailed: Bool = false
     @Published var sbxrunning: Bool = false
     
+    var sbProc: RemoteCall?
+    
     static let shared = laramgr()
     static let fontpath = "/System/Library/Fonts/Core/SFUI.ttf"
     static let italicfontpath = "/System/Library/Fonts/Core/SFUIItalic.ttf"
@@ -466,11 +468,11 @@ final class laramgr: ObservableObject {
         logmsg("initializing remote call on \(process)...")
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = init_remote_call(process, migbypass)
+            self?.sbProc = RemoteCall(process: process, useMigFilterBypass: migbypass)
             
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                let success = result == 0
+                let success = self.sbProc != nil
                 if success {
                     self.logmsg("remote call initialized on \(process)")
                 } else {
@@ -489,7 +491,7 @@ final class laramgr: ObservableObject {
         remotecallrunning = false
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            destroy_remote_call()
+            self?.sbProc?.destroy()
             
             DispatchQueue.main.async {
                 self?.logmsg("remote call session destroyed")
@@ -500,22 +502,25 @@ final class laramgr: ObservableObject {
     
     //  params:
     //  - name: function to call
-    //  - args: up to 8 args (x0-x7)
+    //  - args: up to 8 args in registers (x0-x7) and extra args passed to stack pointer
     //  - timeout: timeout in ms
     //  ret: return value from rc
     func rccall(name: String, args: [UInt64] = [], timeout: Int32 = 100) -> UInt64 {
         guard remotecallrunning else { return 0 }
-        
-        var padded = args
-        while padded.count < 8 {
-            padded.append(0)
+        let RTLD_DEFAULT = UnsafeMutableRawPointer(bitPattern: -2)
+        let ptr = dlsym(RTLD_DEFAULT, name)
+        var argsCopy = args
+        return name.withCString { (cName: UnsafePointer<CChar>) -> UInt64 in
+            UInt64(argsCopy.withUnsafeMutableBufferPointer { buffer in
+                sbProc?.doStable(
+                    withTimeout: timeout,
+                    functionName: UnsafeMutablePointer(mutating: cName),
+                    functionPointer: ptr,
+                    args: buffer.baseAddress,
+                    argCount: UInt(args.count)
+                ) ?? 0
+            })
         }
-        
-        return do_remote_call_stable(
-            timeout, name,
-            padded[0], padded[1], padded[2], padded[3],
-            padded[4], padded[5], padded[6], padded[7]
-        )
     }
     #endif
 }
