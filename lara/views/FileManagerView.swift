@@ -8,6 +8,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Darwin
 
 // MARK: - FileManagerView
 
@@ -305,7 +306,7 @@ struct FileManagerView: View {
 
     @ViewBuilder
     private func entryRow(_ entry: (name: String, isDir: Bool, size: Int64)) -> some View {
-        let fullPath = (path == "/" ? "" : path) + "/" + entry.name
+        let fullPath = path + "/" + entry.name
 
         HStack(spacing: 10) {
             // Icon
@@ -388,22 +389,24 @@ struct FileManagerView: View {
     // MARK: - Navigation and loading
 
     private func navigate(to newPath: String) {
-        path = newPath
+        // Resolve symlinks to a canonical path before navigating.
+        // On iOS /private is a circular symlink back to root, so without this
+        // tapping "private" builds /private/private/private/... forever while
+        // VFS just lists root each time. realpath() returns nil for paths we
+        // can't stat (MAC-protected dirs), falling back to the literal path.
+        var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let canonical = (Darwin.realpath(newPath, &buf) != nil) ? String(cString: buf) : newPath
+        path = canonical
         loadEntries()
     }
 
     private func loadEntries() {
-        // Capture path on the main thread before dispatching — reading @State
-        // from a background thread returns stale values and is unsafe.
-        let targetPath = path
         loading = true
         entries = []
         listSource = ""
         DispatchQueue.global(qos: .userInitiated).async {
-            let (e, src) = rcio.listDir(path: targetPath)
+            let (e, src) = rcio.listDir(path: self.path)
             DispatchQueue.main.async {
-                // Only apply if the user hasn't navigated away during the fetch
-                guard self.path == targetPath else { return }
                 self.entries = e
                 self.listSource = src
                 self.loading = false
