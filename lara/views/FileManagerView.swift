@@ -305,7 +305,7 @@ struct FileManagerView: View {
 
     @ViewBuilder
     private func entryRow(_ entry: (name: String, isDir: Bool, size: Int64)) -> some View {
-        let fullPath = path + "/" + entry.name
+        let fullPath = (path == "/" ? "" : path) + "/" + entry.name
 
         HStack(spacing: 10) {
             // Icon
@@ -393,12 +393,17 @@ struct FileManagerView: View {
     }
 
     private func loadEntries() {
+        // Capture path on the main thread before dispatching — reading @State
+        // from a background thread returns stale values and is unsafe.
+        let targetPath = path
         loading = true
         entries = []
         listSource = ""
         DispatchQueue.global(qos: .userInitiated).async {
-            let (e, src) = rcio.listDir(path: self.path)
+            let (e, src) = rcio.listDir(path: targetPath)
             DispatchQueue.main.async {
+                // Only apply if the user hasn't navigated away during the fetch
+                guard self.path == targetPath else { return }
                 self.entries = e
                 self.listSource = src
                 self.loading = false
