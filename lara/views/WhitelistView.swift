@@ -5,6 +5,14 @@
 //  Created by ruter on 29.03.26.
 //  modified and fixed by claude, implemented by TheDiamondSquidy
 //
+//  Write notes:
+//  - Direct write works post-sbx-escape for most /var paths
+//  - VFS overwrite works for existing inodes only (no new file creation)
+//  - Creating new files in /private/var/db/MobileIdentityData/ requires
+//    mobileidentityd's MAC context — needs remotecall, not wired here yet
+//  - On a clean device the Banned plists simply don't exist, so patch is
+//    disabled until a refresh finds them
+
 import SwiftUI
 import Darwin
 
@@ -17,11 +25,10 @@ struct WhitelistView: View {
         let path: String
     }
 
-    /// The result of attempting to read a blacklist file.
     private enum ReadResult {
-        case notPresent          // file doesn't exist or is empty — device is clean
-        case content(String)     // file exists and has meaningful content
-        case readError(String)   // file exists but couldn't be read
+        case notPresent      // file absent or empty plist — device is clean
+        case content(String) // file present with meaningful content
+        case readError(String)
     }
 
     private let files: [wlfile] = [
@@ -32,9 +39,8 @@ struct WhitelistView: View {
 
     @State private var results: [String: ReadResult] = [:]
     @State private var status: String?
-    @State private var patching = false
+    @State private var working = false
 
-    /// True only if at least one blacklist file exists and has content.
     private var anyFilePresent: Bool {
         results.values.contains { if case .content = $0 { return true }; return false }
     }
@@ -46,21 +52,18 @@ struct WhitelistView: View {
                     Button {
                         loadall()
                     } label: {
-                        if patching {
-                            HStack {
-                                ProgressView()
-                                Text("Working...")
-                            }
+                        if working {
+                            HStack { ProgressView(); Text("Working...") }
                         } else {
                             Text("Refresh")
                         }
                     }
-                    .disabled(!mgr.sbxready || patching)
+                    .disabled(!mgr.sbxready || working)
 
                     Button("Patch (Empty Plist)") {
                         patchall()
                     }
-                    .disabled(!mgr.sbxready || patching || !anyFilePresent)
+                    .disabled(!mgr.sbxready || working || !anyFilePresent)
                 } header: {
                     Text("Actions")
                 } footer: {
@@ -121,9 +124,7 @@ struct WhitelistView: View {
                 Text(status ?? "")
             }
             .onAppear {
-                if mgr.sbxready {
-                    loadall()
-                }
+                if mgr.sbxready { loadall() }
             }
         }
     }
@@ -131,16 +132,11 @@ struct WhitelistView: View {
     // MARK: - Actions
 
     private func loadall() {
-        guard mgr.sbxready else {
-            status = "sandbox escape not ready"
-            return
-        }
-        patching = true
-        defer { patching = false }
+        guard mgr.sbxready else { status = "sandbox escape not ready"; return }
+        working = true
+        defer { working = false }
         var next: [String: ReadResult] = [:]
-        for f in files {
-            next[f.path] = sbxread(path: f.path, maxSize: 2 * 1024 * 1024)
-        }
+        for f in files { next[f.path] = read(path: f.path) }
         results = next
     }
 
@@ -149,134 +145,79 @@ struct WhitelistView: View {
             status = "nothing to patch — no blacklist entries present"
             return
         }
-        patching = true
-        defer { patching = false }
+        working = true
+        defer { working = false }
 
-        guard let data = try? PropertyListSerialization.data(
-            fromPropertyList: [:],
-            format: .xml,
-            options: 0
-        ) else {
+        guard let empty = try? PropertyListSerialization.data(fromPropertyList: [:], format: .xml, options: 0) else {
             status = "failed to build empty plist"
             return
         }
 
         var failures: [String] = []
-
         for f in files {
             guard case .content = results[f.path] else { continue }
-            let result = sbxwrite(path: f.path, data: data)
-            if !result.hasPrefix("ok") {
-                failures.append("\(f.name): \(result)")
-            }
+            let result = write(path: f.path, data: empty)
+            if !result.hasPrefix("ok") { failures.append("\(f.name): \(result)") }
         }
 
-        if failures.isEmpty {
-            status = "Patched all files!"
-        } else {
-            status = "Failed to patch: \(failures.joined(separator: ", "))"
-        }
-
+        status = failures.isEmpty ? "Patched all files!" : "Failed: \(failures.joined(separator: ", "))"
         loadall()
     }
 
     // MARK: - I/O
 
-    /// Reads a file and classifies the result:
-    /// - `.notPresent` if the file doesn't exist OR if its plist is empty
-    ///   (an empty Rejections.plist means no rejections have been recorded,
-    ///   which is indistinguishable from the file not existing in terms of
-    ///   whether the device is blacklisted)
-    /// - `.content` if the file exists and contains meaningful data
-    /// - `.readError` if the file exists but couldn't be read
-    private func sbxread(path: String, maxSize: Int) -> ReadResult {
+    /// Reads a file, trying direct access then VFS.
+    /// Returns .notPresent when the file is absent or its plist is empty —
+    /// an empty plist is indistinguishable from no ban having been recorded.
+    private func read(path: String) -> ReadResult {
+        // Check existence via both direct stat and VFS before attempting a read
         let exists = FileManager.default.fileExists(atPath: path)
-            || (mgr.vfsready && vfsExists(path: path))
+            || (mgr.vfsready && mgr.vfsread(path: path, maxSize: 1) != nil)
+        guard exists else { return .notPresent }
 
-        guard exists else {
-            return .notPresent
-        }
-
-        // Attempt 1: direct read
+        // Attempt 1: direct read (works post-sbx-escape for most paths)
         let data: Data?
         if let d = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-            data = d.count > maxSize ? d.prefix(maxSize) : d
+            data = d
         } else if mgr.vfsready {
-            // Attempt 2: VFS fallback
-            data = mgr.vfsread(path: path, maxSize: maxSize)
+            // Attempt 2: VFS — confirmed working for this directory
+            data = mgr.vfsread(path: path, maxSize: 2 * 1024 * 1024)
         } else {
             data = nil
         }
 
-        guard let data = data else {
-            let errDesc = String(cString: strerror(errno))
-            return .readError("errno=\(errno) \(errDesc)\(mgr.vfsready ? " | vfs returned nil" : " | vfs not ready")")
+        guard let data else {
+            return .readError("errno=\(errno) \(String(cString: strerror(errno)))\(mgr.vfsready ? " | vfs returned nil" : " | vfs not ready")")
         }
 
-        // Treat an empty plist (empty dict or empty array) the same as the
-        // file not existing — a Rejections.plist with no entries is not a
-        // sign the device is blacklisted, just that mobileidentityd created
-        // the file as bookkeeping without recording any actual bans.
+        // An empty plist means no bans — treat same as absent
         if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) {
             let isEmpty = (plist as? [AnyHashable: Any])?.isEmpty == true
                        || (plist as? [Any])?.isEmpty == true
-            if isEmpty {
-                return .notPresent
-            }
+            if isEmpty { return .notPresent }
         }
 
         return .content(render(data: data))
     }
 
-    /// Lightweight existence check via VFS for paths not reachable by FileManager.
-    private func vfsExists(path: String) -> Bool {
-        mgr.vfsread(path: path, maxSize: 1) != nil
-    }
-
-    /// Writes data using a temp file + atomic rename to avoid O_TRUNC on
-    /// guarded inodes. Falls back to VFS overwrite if rename fails.
-    private func sbxwrite(path: String, data: Data) -> String {
-        let tmp = path + ".laratmp"
-
-        let fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
-        guard fd != -1 else {
-            return vfsfallback(
-                path: path, data: data,
-                reason: "open tmp failed: errno=\(errno) \(String(cString: strerror(errno)))"
-            )
+    /// Writes data, trying direct I/O then VFS overwrite.
+    /// Both only work on existing inodes — creating new files in
+    /// MobileIdentityData requires remotecall into mobileidentityd.
+    private func write(path: String, data: Data) -> String {
+        // Attempt 1: direct write (post-sbx-escape)
+        let fd = open(path, O_WRONLY | O_TRUNC, 0o644)   // no O_CREAT — we only patch existing files
+        if fd != -1 {
+            let n = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            close(fd)
+            if n == data.count { return "ok (\(n) bytes direct)" }
         }
 
-        let written = data.withUnsafeBytes { ptr in
-            write(fd, ptr.baseAddress, ptr.count)
-        }
-        close(fd)
-
-        guard written != -1 else {
-            unlink(tmp)
-            return vfsfallback(
-                path: path, data: data,
-                reason: "write tmp failed: errno=\(errno) \(String(cString: strerror(errno)))"
-            )
-        }
-
-        if rename(tmp, path) == 0 {
-            return "ok (\(written) bytes via rename)"
-        }
-
-        let renameErrno = errno
-        unlink(tmp)
-        return vfsfallback(
-            path: path, data: data,
-            reason: "rename failed: errno=\(renameErrno) \(String(cString: strerror(renameErrno)))"
-        )
-    }
-
-    private func vfsfallback(path: String, data: Data, reason: String) -> String {
+        // Attempt 2: VFS overwrite (existing inodes only, confirmed working in this dir)
         guard mgr.vfsready else {
-            return reason + " | vfs not ready"
+            return "open failed: errno=\(errno) \(String(cString: strerror(errno))) | vfs not ready"
         }
         let ok = mgr.vfsoverwritewithdata(target: path, data: data)
-        return ok ? "ok (vfs overwrite)" : reason + " | vfs overwrite failed"
+        return ok ? "ok (vfs overwrite)" : "direct and vfs both failed for \(path)"
     }
 
     // MARK: - Rendering
@@ -284,14 +225,10 @@ struct WhitelistView: View {
     private func render(data: Data) -> String {
         if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
            let xmlData = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0),
-           let xml = String(data: xmlData, encoding: .utf8) {
-            return xml
-        }
-        if let s = String(data: data, encoding: .utf8) {
-            return s
-        }
-        let maxBytes = min(data.count, 4096)
-        let hex = data.prefix(maxBytes).map { String(format: "%02x", $0) }.joined(separator: " ")
-        return data.count > maxBytes ? hex + "\n... (\(data.count) bytes total)" : hex
+           let xml = String(data: xmlData, encoding: .utf8) { return xml }
+        if let s = String(data: data, encoding: .utf8) { return s }
+        let cap = min(data.count, 4096)
+        let hex = data.prefix(cap).map { String(format: "%02x", $0) }.joined(separator: " ")
+        return data.count > cap ? hex + "\n... (\(data.count) bytes total)" : hex
     }
 }
