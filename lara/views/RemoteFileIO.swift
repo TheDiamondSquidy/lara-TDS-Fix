@@ -454,17 +454,24 @@ final class RemoteFileIO: ObservableObject {
 
     // MARK: - Directory listing
 
-    /// Lists a directory. Fallback chain:
-    ///   1. VFS              — bypasses most sandbox restrictions
-    ///   2. FileManager      — works post-sbx-escape for accessible paths
-    ///   3. RemoteCall       — opendir/readdir/closedir in a routed process
+    /// Lists a directory.
+    /// Tier order: RC (accurate, uses real process credentials) →
+    ///             FileManager (fast, post-sbx) → VFS (last resort, known path bugs)
     func listDir(path: String) -> (entries: [(name: String, isDir: Bool, size: Int64)], source: String) {
 
-        // Tier 1: VFS
-        if mgr.vfsready, let items = mgr.vfslistdir(path: path) {
-            let enriched = items.map { (name: $0.name, isDir: $0.isDir,
-                                        size: $0.isDir ? -1 : mgr.vfssize(path: path + "/" + $0.name)) }
-            return (enriched, "vfs")
+        // Tier 1: RemoteCall — opendir/readdir/closedir in a routed process.
+        // Goes first because VFS has path-resolution bugs (e.g. returns root entries
+        // for /private/var, marks files as dirs, infinite symlink loops).
+        // Only uses processes that are ALREADY ready — never triggers lazy init here.
+        let best = rcBestProcess(for: path)
+        var candidates = [best]
+        for proc in Self.fallbackOrder where proc != best { candidates.append(proc) }
+        for proc in candidates {
+            if let items = rcListDirIn(path: path, process: proc) {
+                mgr.logmsg("(rcio) listDir \(path) via \(proc): \(items.count) entries")
+                let enriched = items.map { (name: $0.name, isDir: $0.isDir, size: Int64(-1)) }
+                return (enriched, "rc:\(proc)")
+            }
         }
 
         // Tier 2: FileManager (post-sbx-escape, fast for accessible paths)
@@ -480,59 +487,53 @@ final class RemoteFileIO: ObservableObject {
             return (entries, "filemanager")
         }
 
-        // Tier 3: RemoteCall — opendir/readdir/closedir inside a routed process.
-        // This is the only tier that can list directories protected by MAC policy
-        // (e.g. /private/var/Keychains, /private/var/db, container dirs).
-        let best = rcBestProcess(for: path)
-        var candidates = [best]
-        for proc in Self.fallbackOrder where proc != best { candidates.append(proc) }
-
-        for proc in candidates {
-            if let items = rcListDirIn(path: path, process: proc) {
-                mgr.logmsg("(rcio) listDir \(path) via \(proc): \(items.count) entries")
-                let enriched = items.map { (name: $0.name, isDir: $0.isDir, size: Int64(-1)) }
-                return (enriched, "rc:\(proc)")
-            }
+        // Tier 3: VFS — last resort only; known to return incorrect entries for some
+        // paths and mark files as directories.
+        if mgr.vfsready, let items = mgr.vfslistdir(path: path) {
+            let enriched = items.map { (name: $0.name, isDir: $0.isDir,
+                                        size: $0.isDir ? -1 : mgr.vfssize(path: path + "/" + $0.name)) }
+            return (enriched, "vfs")
         }
 
         return ([], "failed")
     }
 
-    /// Calls opendir/readdir/closedir inside the named RC process.
-    /// Returns nil if the process isn't ready or the directory can't be opened.
+    // MARK: - RC directory listing
+
+    /// opendir/readdir/closedir inside `process`. Only uses pool entries that are
+    /// already ready — does NOT trigger lazy initialisation.
     private func rcListDirIn(path: String, process: String) -> [(name: String, isDir: Bool)]? {
-        guard let rc = rcProc(for: process) else { return nil }
+        poolLock.lock()
+        let state = pool[process]?.state
+        let rc    = pool[process]?.rc
+        poolLock.unlock()
+        guard case .ready = state, let rc else { return nil }
 
         let pathBytes = Array((path + "\0").utf8)
         let trojanMem = rc.trojanMem
         guard trojanMem != 0 else { return nil }
 
-        // Write the path into trojanMem (same pattern as rcRead/rcWrite)
         pathBytes.withUnsafeBytes { rc.remote_write(trojanMem, from: $0.baseAddress, size: UInt64(pathBytes.count)) }
 
-        // opendir(path) — runs inside the remote process, inheriting its MAC context
         let dirPtr = callIn(rc: rc, name: "opendir", args: [trojanMem])
         guard dirPtr != 0 else { return nil }
         defer { _ = callIn(rc: rc, name: "closedir", args: [dirPtr]) }
 
-        // Darwin struct dirent layout (sys/dirent.h):
-        //   offset  0: d_ino      UInt64  (8 bytes)
-        //   offset  8: d_seekoff  UInt64  (8 bytes)
-        //   offset 16: d_reclen   UInt16  (2 bytes)
-        //   offset 18: d_namlen   UInt16  (2 bytes)
-        //   offset 20: d_type     UInt8   (1 byte)
-        //   offset 21: d_name     char[]  (up to 1024 bytes)
-        // DT_DIR = 4, DT_REG = 8, DT_LNK = 10
-        let direntReadSize: UInt64 = 21 + 256  // header + generous name room
+        // Darwin struct dirent (sys/dirent.h):
+        //   offset  0: d_ino      UInt64
+        //   offset  8: d_seekoff  UInt64
+        //   offset 16: d_reclen   UInt16
+        //   offset 18: d_namlen   UInt16
+        //   offset 20: d_type     UInt8   (DT_DIR=4, DT_REG=8, DT_LNK=10)
+        //   offset 21: d_name     char[]
+        let direntReadSize: UInt64 = 21 + 256
 
         var result: [(name: String, isDir: Bool)] = []
 
         while true {
-            // readdir(dirp) returns dirent* inside the remote DIR buffer, or NULL at end
             let direntPtr = callIn(rc: rc, name: "readdir", args: [dirPtr])
             guard direntPtr != 0 else { break }
 
-            // Pull the dirent struct out of the remote process address space
             var buf = [UInt8](repeating: 0, count: Int(direntReadSize))
             let ok = buf.withUnsafeMutableBytes { ptr in
                 rc.remoteRead(direntPtr, to: ptr.baseAddress, size: direntReadSize)
@@ -541,19 +542,136 @@ final class RemoteFileIO: ObservableObject {
 
             let namlen = Int(UInt16(buf[18]) | (UInt16(buf[19]) << 8))
             let dtype  = buf[20]
-
             guard namlen > 0, 21 + namlen <= buf.count else { continue }
 
             let nameBytes = Array(buf[21..<(21 + namlen)])
             guard let name = String(bytes: nameBytes, encoding: .utf8),
                   name != ".", name != ".." else { continue }
 
-            result.append((name: name, isDir: dtype == 4 /* DT_DIR */))
+            result.append((name: name, isDir: dtype == 4))
         }
 
-        // Return nil rather than empty so the caller can try the next process
         guard !result.isEmpty else { return nil }
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    // MARK: - Delete
+
+    /// Delete a file or empty directory using the best available method.
+    func delete(path: String) -> RCIOResult {
+        let start = Date()
+
+        // Tier 1: direct via FileManager
+        if (try? FileManager.default.removeItem(atPath: path)) != nil {
+            let r = RCIOResult(ok: true, tier: .direct, process: nil, bytes: 0,
+                               duration: -start.timeIntervalSinceNow,
+                               message: "ok (direct delete)",
+                               diagnostic: "FileManager.removeItem succeeded")
+            appendLog(op: "delete", path: path, result: r)
+            return r
+        }
+
+        // Tier 2: VFS overwrite (not applicable for delete — skip)
+
+        // Tier 3: RemoteCall unlink/rmdir
+        let best = rcBestProcess(for: path)
+        var candidates = [best]
+        for proc in Self.fallbackOrder where proc != best { candidates.append(proc) }
+
+        for proc in candidates {
+            let (ok, diag) = rcDeleteIn(path: path, process: proc)
+            if ok {
+                let r = RCIOResult(ok: true, tier: .remoteCall, process: proc, bytes: 0,
+                                   duration: -start.timeIntervalSinceNow,
+                                   message: "ok (rc:\(proc) deleted)",
+                                   diagnostic: diag)
+                appendLog(op: "delete", path: path, result: r)
+                return r
+            }
+        }
+
+        let r = RCIOResult.failure("delete failed (tried: \(candidates.joined(separator: ", ")))",
+                                   duration: -start.timeIntervalSinceNow)
+        appendLog(op: "delete", path: path, result: r)
+        return r
+    }
+
+    private func rcDeleteIn(path: String, process: String) -> (Bool, String) {
+        poolLock.lock()
+        let state = pool[process]?.state
+        let rc    = pool[process]?.rc
+        poolLock.unlock()
+        guard case .ready = state, let rc else { return (false, "\(process) not ready") }
+
+        let pathBytes = Array((path + "\0").utf8)
+        let trojanMem = rc.trojanMem
+        guard trojanMem != 0 else { return (false, "trojanMem is 0") }
+
+        pathBytes.withUnsafeBytes { rc.remote_write(trojanMem, from: $0.baseAddress, size: UInt64(pathBytes.count)) }
+
+        // Try unlink (files), then rmdir (empty dirs)
+        let ul = Int32(bitPattern: UInt32(callIn(rc: rc, name: "unlink", args: [trojanMem]) & 0xFFFFFFFF))
+        if ul == 0 { return (true, "\(process) unlink ok") }
+
+        let rd = Int32(bitPattern: UInt32(callIn(rc: rc, name: "rmdir", args: [trojanMem]) & 0xFFFFFFFF))
+        if rd == 0 { return (true, "\(process) rmdir ok") }
+
+        return (false, "unlink errno=\(ul) rmdir errno=\(rd)")
+    }
+
+    // MARK: - Move / Rename
+
+    /// Rename or move a file/directory using the best available method.
+    func move(from srcPath: String, to dstPath: String) -> RCIOResult {
+        let start = Date()
+
+        // Tier 1: FileManager
+        if (try? FileManager.default.moveItem(atPath: srcPath, toPath: dstPath)) != nil {
+            let r = RCIOResult(ok: true, tier: .direct, process: nil, bytes: 0,
+                               duration: -start.timeIntervalSinceNow,
+                               message: "ok (direct move)",
+                               diagnostic: "FileManager.moveItem succeeded")
+            appendLog(op: "move", path: srcPath, result: r)
+            return r
+        }
+
+        // Tier 2: RemoteCall rename(2) — pack both paths into trojanMem consecutively
+        let best = rcBestProcess(for: srcPath)
+        var candidates = [best]
+        for proc in Self.fallbackOrder where proc != best { candidates.append(proc) }
+
+        for proc in candidates {
+            poolLock.lock()
+            let state = pool[proc]?.state
+            let rc    = pool[proc]?.rc
+            poolLock.unlock()
+            guard case .ready = state, let rc else { continue }
+
+            let trojanMem = rc.trojanMem
+            guard trojanMem != 0 else { continue }
+
+            let srcBytes = Array((srcPath + "\0").utf8)
+            let dstBytes = Array((dstPath + "\0").utf8)
+            let srcLen   = UInt64(srcBytes.count)
+
+            srcBytes.withUnsafeBytes { rc.remote_write(trojanMem, from: $0.baseAddress, size: srcLen) }
+            let dstAddr = trojanMem + srcLen
+            dstBytes.withUnsafeBytes { rc.remote_write(dstAddr, from: $0.baseAddress, size: UInt64(dstBytes.count)) }
+
+            let ret = Int32(bitPattern: UInt32(callIn(rc: rc, name: "rename", args: [trojanMem, dstAddr]) & 0xFFFFFFFF))
+            if ret == 0 {
+                let r = RCIOResult(ok: true, tier: .remoteCall, process: proc, bytes: 0,
+                                   duration: -start.timeIntervalSinceNow,
+                                   message: "ok (rc:\(proc) renamed)",
+                                   diagnostic: "\(proc) rename ok")
+                appendLog(op: "move", path: srcPath, result: r)
+                return r
+            }
+        }
+
+        let r = RCIOResult.failure("move failed", duration: -start.timeIntervalSinceNow)
+        appendLog(op: "move", path: srcPath, result: r)
+        return r
     }
 
     // MARK: - Private helpers
