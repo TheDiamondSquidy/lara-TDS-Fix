@@ -86,7 +86,7 @@ struct lara: App {
             }
             .onChange(of: scenePhase) { phase in
                 if phase == .inactive || phase == .background {
-                    if mgr.remotecallrunning {
+                    if mgr.rcrunning {
                         var bgTask: UIBackgroundTaskIdentifier = .invalid
                         bgTask = UIApplication.shared.beginBackgroundTask(withName: "RemoteCallCleanup") {
                             if bgTask != .invalid {
@@ -94,7 +94,7 @@ struct lara: App {
                                 bgTask = .invalid
                             }
                         }
-
+                        
                         mgr.rcdestroy {
                             if bgTask != .invalid {
                                 UIApplication.shared.endBackgroundTask(bgTask)
@@ -102,7 +102,7 @@ struct lara: App {
                             }
                         }
                     }
-
+                    
                     globallogger.stopcapture()
                 } else if phase == .active {
                     globallogger.capture()

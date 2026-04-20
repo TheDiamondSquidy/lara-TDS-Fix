@@ -189,7 +189,7 @@ struct JitView: View {
 	            }
 	        }
 
-	        if mgr.remotecallrunning {
+	        if mgr.rcrunning {
 	            runEnable()
 	        } else {
 	            mgr.rcinit(process: "SpringBoard", migbypass: false) { success in

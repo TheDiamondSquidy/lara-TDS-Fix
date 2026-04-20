@@ -10,6 +10,7 @@
 
 extern kern_return_t bootstrap_register(mach_port_t bp, const char *service_name, mach_port_t sp);
 extern kern_return_t bootstrap_look_up(mach_port_t bp, const char *service_name, mach_port_t *sp);
+extern kern_return_t bootstrap_unregister(mach_port_t bp, const char *service_name);
 
 int64_t sandbox_extension_consume(const char *extension_token);
 char *sandbox_extension_issue_mach(const char *extension_class, const char *name, uint32_t flags);

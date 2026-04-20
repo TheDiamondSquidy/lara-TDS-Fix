@@ -26,7 +26,7 @@ final class laramgr: ObservableObject {
     @Published var fileopinprogress: Bool = false
     @Published var testresult: String?
     #if !DISABLE_REMOTECALL
-    @Published var remotecallrunning: Bool = false
+    @Published var rcrunning: Bool = false
     #endif
     
     @Published var vfsready: Bool = false
@@ -39,6 +39,7 @@ final class laramgr: ObservableObject {
     @Published var sbxattempted: Bool = false
     @Published var sbxfailed: Bool = false
     @Published var sbxrunning: Bool = false
+    @Published var rcready: Bool = false
     
     var sbProc: RemoteCall?
     
@@ -459,12 +460,12 @@ final class laramgr: ObservableObject {
     
     #if !DISABLE_REMOTECALL
     func rcinit(process: String, migbypass: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard dsready, !remotecallrunning else {
+        guard dsready, !rcready else {
             completion?(false)
             return
         }
         
-        remotecallrunning = true
+        rcrunning = true
         logmsg("initializing remote call on \(process)...")
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -475,9 +476,11 @@ final class laramgr: ObservableObject {
                 let success = self.sbProc != nil
                 if success {
                     self.logmsg("remote call initialized on \(process)")
+                    self.rcrunning = false
+                    self.rcready = true
                 } else {
                     self.logmsg("remote call init failed on \(process)")
-                    self.remotecallrunning = false
+                    self.rcrunning = false
                 }
                 completion?(success)
             }
@@ -485,10 +488,10 @@ final class laramgr: ObservableObject {
     }
     
     func rcdestroy(completion: (() -> Void)? = nil) {
-        guard remotecallrunning else { return }
+        guard rcready else { return }
         
         logmsg("destroying remote call session...")
-        remotecallrunning = false
+        rcready = false
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.sbProc?.destroy()
@@ -506,7 +509,7 @@ final class laramgr: ObservableObject {
     //  - timeout: timeout in ms
     //  ret: return value from rc
     func rccall(name: String, args: [UInt64] = [], timeout: Int32 = 100) -> UInt64 {
-        guard remotecallrunning else { return 0 }
+        guard rcready else { return 0 }
         let RTLD_DEFAULT = UnsafeMutableRawPointer(bitPattern: -2)
         let ptr = dlsym(RTLD_DEFAULT, name)
         var argsCopy = args
