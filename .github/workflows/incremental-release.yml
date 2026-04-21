@@ -75,7 +75,11 @@ jobs:
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
-          body: ${{ env.COMMITS }}
+          body: |
+            **Branch:** ${{ github.ref_name }}
+            
+            **Changes in this build:**
+            ${{ env.COMMITS }}
           files: |
             build/lara.ipa
         env:
