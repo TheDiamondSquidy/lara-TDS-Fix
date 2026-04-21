@@ -130,7 +130,7 @@ struct EditorView: View {
                 } header: {
                     Text("Apply")
                 } footer: {
-                    Text("Use at your own risk. Always keep a backup of you MobileGestalt somewhere safe.")
+                    Text("Use at your own risk. Always keep a backup of your MobileGestalt somewhere safe.")
                 }
                 
                 HStack(alignment: .top) {
