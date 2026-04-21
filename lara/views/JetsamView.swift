@@ -25,7 +25,7 @@ import Darwin
 @_silgen_name("memorystatus_control")
 private func memorystatus_control(
     _ command: Int32,
-    _ pid: UInt32,
+    _ pid: Int32,
     _ flags: UInt32,
     _ buffer: UnsafeMutableRawPointer?,
     _ buffersize: Int
