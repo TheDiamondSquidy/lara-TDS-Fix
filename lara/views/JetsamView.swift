@@ -24,7 +24,7 @@ import Darwin
 // Declare memorystatus_control so Swift can call it without modifying the bridging header
 @_silgen_name("memorystatus_control")
 private func memorystatus_control(
-    _ command: UInt32,
+    _ command: Int32,
     _ pid: UInt32,
     _ flags: UInt32,
     _ buffer: UnsafeMutableRawPointer?,
