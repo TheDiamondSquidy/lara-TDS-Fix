@@ -98,7 +98,7 @@ struct RCPoolEntry {
 
 struct RunningProcess: Identifiable {
     let id   = UUID()
-    let pid:  Int32
+    let pid:  UInt32
     let uid:  UInt32
     let name: String
     var isRoot: Bool { uid == 0 }
