@@ -66,10 +66,14 @@ struct SantanderBrowserSheet: UIViewControllerRepresentable {
     let startPath: String
     let readUsesSBX: Bool
     let writeUsesVFS: Bool
+    // Static cache retains the UINavigationController across presentations so the user
+    // doesn't lose their directory position. The toolbar is always explicitly hidden to
+    // prevent it bleeding through into the parent SwiftUI NavigationStack as a ghost bar.
     private static var cachedNav: UINavigationController?
 
     func makeUIViewController(context: Context) -> UINavigationController {
         if let nav = Self.cachedNav {
+            nav.setToolbarHidden(true, animated: false)
             return nav
         }
         let root = SantanderPathListViewController(
@@ -78,12 +82,14 @@ struct SantanderBrowserSheet: UIViewControllerRepresentable {
             useVFSOverwrite: writeUsesVFS
         )
         let nav = UINavigationController(rootViewController: root)
+        nav.setToolbarHidden(true, animated: false)   // never show UIKit bottom toolbar
         Self.cachedNav = nav
         return nav
     }
 
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {
-        // no-op
+        // Ensure toolbar stays hidden even after UIKit layout passes
+        uiViewController.setToolbarHidden(true, animated: false)
     }
 }
 
