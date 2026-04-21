@@ -73,7 +73,7 @@ struct InspectedProcess: Identifiable {
     let name: String
 
     // Populated lazily in detail sheet
-    var fileprivate taskInfo: ProcTaskInfo? = nil
+    fileprivate var taskInfo: ProcTaskInfo? = nil
 
     var isRoot: Bool { uid == 0 }
 
