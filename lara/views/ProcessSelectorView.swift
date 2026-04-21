@@ -309,8 +309,29 @@ private struct RunningRow: View {
         return false
     }
 
+    // Dot colour mirrors RecommendedRow.stateColor.
+    // .spawning must be an explicit case here: poolEntry is Optional, so a
+    // plain default would silently swallow nil (not running) and .spawning
+    // (initing) with the same grey — exactly the bug isIniting was papering over.
+    private var stateColor: Color {
+        guard let state = poolEntry?.state else { return Color(.systemGray4) }
+        switch state {
+        case .ready:                   return .green
+        case .initializing, .spawning: return .blue
+        case .failed:                  return .red
+        case .uninitialized:           return Color(.systemGray4)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 10) {
+            // State dot — was missing from RunningRow entirely.
+            // Without it, spawning/initing processes showed no colour cue,
+            // even though isIniting already detected the state correctly.
+            Circle()
+                .fill(stateColor)
+                .frame(width: 8, height: 8)
+
             Text(proc.isRoot ? "R" : "M")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundColor(proc.isRoot ? .orange : .secondary)
