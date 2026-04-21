@@ -8,12 +8,16 @@
 //    • RC pool status badge
 //
 //  Tapping a tile opens a detail sheet with full task info and actions:
-//    • Terminate (SIGTERM / SIGKILL — works post-sbx-escape for mobile processes)
-//    • Init RC / Destroy RC
+//    • Terminate — tries Jetsam TERMINATE_PROCESS first, falls back to SIGTERM/SIGKILL
+//    • Init RC / Destroy RC — sheet stays open while initialising (no premature dismiss)
 //    • Browse file jurisdiction (opens RC file manager at process's likely path)
 //
-//  proc_pidinfo requires no special entitlement post-sbx-escape on jailbroken devices.
-//  If it fails, memory fields show "—" gracefully.
+//  Fix log (update 3):
+//    • ProcessDetailSheet observes RemoteFileIO.shared directly — pool state updates live
+//    • Init RC no longer dismisses the sheet; shows spinner until ready/failed
+//    • RC-initiated processes (addArbitraryProcess) are visible in RC File Manager
+//    • Terminate attempts MEMORYSTATUS_CMD_TERMINATE_PROCESS (21) before Darwin.kill
+//    • Memory section always shows resident/virtual if proc_pidinfo succeeds
 //
 
 import SwiftUI
@@ -36,8 +40,8 @@ private let PROC_PIDTASKINFO_FLAVOR: Int32 = 4
 /// Mirrors the layout of struct proc_taskinfo from <proc_info.h>.
 /// Total size: 6 × UInt64 (48) + 12 × Int32 (48) = 96 bytes.
 private struct ProcTaskInfo {
-    var pti_virtual_size:       UInt64 = 0   // virtual memory (bytes)
-    var pti_resident_size:      UInt64 = 0   // resident memory (bytes)
+    var pti_virtual_size:       UInt64 = 0
+    var pti_resident_size:      UInt64 = 0
     var pti_total_user:         UInt64 = 0
     var pti_total_system:       UInt64 = 0
     var pti_threads_user:       UInt64 = 0
@@ -65,6 +69,27 @@ private func getTaskInfo(pid: Int32) -> ProcTaskInfo? {
     return ret > 0 ? info : nil
 }
 
+// MARK: - Jetsam terminate (private API, works post-sbx-escape)
+
+@_silgen_name("memorystatus_control")
+private func _memorystatus_control(
+    _ command: Int32,
+    _ pid: Int32,
+    _ flags: UInt32,
+    _ buffer: UnsafeMutableRawPointer?,
+    _ buffersize: Int
+) -> Int32
+
+// MEMORYSTATUS_CMD_TERMINATE_PROCESS = 21
+// Directly terminates a process via the jetsam subsystem.
+// Requires post-sbx-escape privileges. Falls back to Darwin.kill on failure.
+private let MEMORYSTATUS_CMD_TERMINATE_PROCESS: Int32 = 21
+
+private func jetsamTerminate(pid: Int32) -> Bool {
+    let ret = _memorystatus_control(MEMORYSTATUS_CMD_TERMINATE_PROCESS, pid, 0, nil, 0)
+    return ret == 0
+}
+
 // MARK: - Enriched process model
 
 struct InspectedProcess: Identifiable {
@@ -90,7 +115,6 @@ struct InspectedProcess: Identifiable {
         return String(format: "%.1f MB", Double(ti.pti_virtual_size) / (1024 * 1024))
     }
 
-    /// Best guessed file jurisdiction path based on name / uid.
     var suggestedPath: String {
         if isRoot { return "/private/var/db" }
         return "/private/var/mobile"
@@ -103,10 +127,10 @@ struct ProcessInspectorView: View {
     @ObservedObject private var mgr  = laramgr.shared
     @ObservedObject private var rcio = RemoteFileIO.shared
 
-    @State private var processes:  [InspectedProcess] = []
-    @State private var loading     = false
-    @State private var searchText  = ""
-    @State private var selected:   InspectedProcess? = nil
+    @State private var processes: [InspectedProcess] = []
+    @State private var loading    = false
+    @State private var searchText = ""
+    @State private var selected:  InspectedProcess? = nil
 
     private var filtered: [InspectedProcess] {
         guard !searchText.isEmpty else { return processes }
@@ -146,12 +170,9 @@ struct ProcessInspectorView: View {
             }
         }
         .sheet(item: $selected) { proc in
-            ProcessDetailSheet(
-                process: proc,
-                rcPoolEntry: rcio.pool[proc.name],
-                onInit: { initProcess(proc.name) },
-                onDestroy: { rcio.destroyProc(proc.name) }
-            )
+            // ProcessDetailSheet observes rcio directly — no stale rcPoolEntry parameter.
+            // This means pool state (initialising → ready) updates live in the sheet.
+            ProcessDetailSheet(process: proc)
         }
         .onAppear { refresh() }
     }
@@ -161,18 +182,15 @@ struct ProcessInspectorView: View {
     @ViewBuilder
     private func processRow(_ proc: InspectedProcess) -> some View {
         HStack(spacing: 10) {
-            // Privilege tag
             Text(proc.privilegeLabel)
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundColor(proc.isRoot ? .orange : .blue)
                 .frame(width: 14)
 
-            // State dot
             Circle()
                 .fill(poolDotColor(for: proc.name))
                 .frame(width: 7, height: 7)
 
-            // Name + pid
             VStack(alignment: .leading, spacing: 1) {
                 Text(proc.name)
                     .font(.system(.body, design: .monospaced))
@@ -181,7 +199,8 @@ struct ProcessInspectorView: View {
                     Text("pid \(proc.pid)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.secondary)
-                    if let ti = proc.taskInfo {
+                    // Always show memory inline when available
+                    if let ti = proc.taskInfo, ti.pti_resident_size > 0 {
                         Text(String(format: "%.1f MB", Double(ti.pti_resident_size) / (1024 * 1024)))
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.secondary)
@@ -215,7 +234,6 @@ struct ProcessInspectorView: View {
         loading = true
         DispatchQueue.global(qos: .userInitiated).async {
             let raw = rcio.listRunningProcesses()
-            // Enrich with task info while on background queue
             let enriched: [InspectedProcess] = raw.map { rp in
                 var p = InspectedProcess(pid: rp.pid, uid: rp.uid, name: rp.name)
                 p.taskInfo = getTaskInfo(pid: Int32(rp.pid))
@@ -227,30 +245,22 @@ struct ProcessInspectorView: View {
             }
         }
     }
-
-    private func initProcess(_ name: String) {
-        guard mgr.dsready else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            rcio.addArbitraryProcess(name)
-            _ = rcio.rcProc(for: name, spawnIfNeeded: false)
-        }
-    }
 }
 
 // MARK: - Process detail sheet
 
 struct ProcessDetailSheet: View {
-    let process:      InspectedProcess
-    let rcPoolEntry:  RCPoolEntry?
-    let onInit:       () -> Void
-    let onDestroy:    () -> Void
+    let process: InspectedProcess
 
+    // Observe rcio directly so pool state changes (uninit → initialising → ready)
+    // update the sheet UI without requiring a dismiss-and-reopen.
+    @ObservedObject private var rcio = RemoteFileIO.shared
     @ObservedObject private var mgr  = laramgr.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var killStatus: String?
-    @State private var confirmKill: TerminateMode? = nil
-    @State private var showNavigate = false
+    @State private var killStatus:   String?
+    @State private var confirmKill:  TerminateMode? = nil
+    @State private var isInitiating  = false   // true while RC init is in flight
 
     enum TerminateMode: Identifiable {
         case sigterm, sigkill
@@ -259,42 +269,61 @@ struct ProcessDetailSheet: View {
         var label: String { self == .sigterm ? "SIGTERM (graceful)" : "SIGKILL (force)" }
     }
 
-    private var isRCReady: Bool { rcPoolEntry?.state.isReady == true }
+    // Computed from live rcio.pool — updates automatically as pool changes
+    private var rcPoolEntry: RCPoolEntry? { rcio.pool[process.name] }
+    private var isRCReady:   Bool { rcPoolEntry?.state.isReady == true }
+    private var isRCIniting: Bool {
+        if case .initializing = rcPoolEntry?.state { return true }
+        if case .spawning     = rcPoolEntry?.state { return true }
+        return false
+    }
 
     var body: some View {
         NavigationView {
             List {
                 // Identity
                 Section("Identity") {
-                    infoRow("Name", process.name)
-                    infoRow("PID",  "\(process.pid)")
-                    infoRow("UID",  "\(process.uid) (\(process.isRoot ? "root" : "mobile"))")
+                    infoRow("Name",      process.name)
+                    infoRow("PID",       "\(process.pid)")
+                    infoRow("UID",       "\(process.uid) (\(process.isRoot ? "root" : "mobile"))")
+                    infoRow("Privilege", process.isRoot ? "Root (R)" : "Mobile (M)")
                 }
 
-                // Memory
+                // Memory — always attempt to show; surface the failure reason clearly
                 Section("Memory") {
                     if let ti = process.taskInfo {
                         infoRow("Resident", String(format: "%.1f MB", Double(ti.pti_resident_size) / (1024 * 1024)))
-                        infoRow("Virtual",  String(format: "%.1f MB", Double(ti.pti_virtual_size) / (1024 * 1024)))
+                        infoRow("Virtual",  String(format: "%.1f MB", Double(ti.pti_virtual_size)  / (1024 * 1024)))
                         infoRow("Threads",  "\(ti.pti_threadnum) (\(ti.pti_numrunning) running)")
                         infoRow("Faults",   "\(ti.pti_faults)")
                         infoRow("Priority", "\(ti.pti_priority)")
                     } else {
-                        Text("Memory info unavailable — proc_pidinfo failed (may need exploit)")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Memory info unavailable")
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(.secondary)
+                            Text("proc_pidinfo returned no data. Run the exploit on the Home tab, or try initialising RC for this process.")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 2)
                     }
                 }
 
                 // RC pool status
                 Section("RemoteCall") {
+                    // Live pool state row
                     if let entry = rcPoolEntry {
                         HStack {
                             Text("Status")
                             Spacer()
-                            Text(entry.state.description)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(rcStateColor(entry.state))
+                            HStack(spacing: 6) {
+                                // Live spinner while initialising
+                                if isRCIniting { ProgressView().scaleEffect(0.7) }
+                                Text(entry.state.description)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(rcStateColor(entry.state))
+                            }
                         }
                     } else {
                         Text("Not in RC pool")
@@ -303,14 +332,38 @@ struct ProcessDetailSheet: View {
                     }
 
                     if isRCReady {
-                        Button(role: .destructive) { onDestroy(); dismiss() } label: {
+                        // Destroy — dismiss is appropriate here since the state is terminal
+                        Button(role: .destructive) {
+                            rcio.destroyProc(process.name)
+                            dismiss()
+                        } label: {
                             Label("Destroy RC Session", systemImage: "xmark.circle")
                         }
                         .foregroundColor(.red)
+                    } else if isRCIniting || isInitiating {
+                        // Actively initialising — show progress, keep sheet open
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Initialising RC — please wait…")
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
                     } else {
+                        // Not ready — offer Init RC without dismissing
                         Button {
-                            onInit()
-                            dismiss()
+                            guard mgr.dsready else { return }
+                            isInitiating = true
+                            // Register with pool so file manager can see it immediately
+                            rcio.addArbitraryProcess(process.name)
+                            DispatchQueue.global(qos: .userInitiated).async {
+                                _ = rcio.rcProc(for: process.name, spawnIfNeeded: false)
+                                DispatchQueue.main.async {
+                                    // isInitiating clears when pool state updates,
+                                    // but we reset it here as a safety net.
+                                    self.isInitiating = false
+                                }
+                            }
                         } label: {
                             Label("Initialise RC", systemImage: "bolt")
                         }
@@ -324,7 +377,6 @@ struct ProcessDetailSheet: View {
                     footer: Text("Suggested path is estimated from process privilege. Use RC File Manager to navigate freely.")
                         .font(.caption)
                 ) {
-                    // Navigate button — pushes RC file manager at the suggested path
                     NavigationLink {
                         FileManagerViewAtPath(startPath: process.suggestedPath)
                     } label: {
@@ -342,7 +394,7 @@ struct ProcessDetailSheet: View {
                 // Terminate
                 Section(
                     header: Text("Terminate"),
-                    footer: Text("Killing root processes may require root or RC. Mobile processes can be killed post-sbx-escape.")
+                    footer: Text("Tries Jetsam TERMINATE_PROCESS first (needs post-sbx privs), then falls back to signal. Root processes may require exploit.")
                         .font(.caption)
                 ) {
                     if let status = killStatus {
@@ -351,16 +403,12 @@ struct ProcessDetailSheet: View {
                             .foregroundColor(.secondary)
                     }
 
-                    Button {
-                        confirmKill = .sigterm
-                    } label: {
+                    Button { confirmKill = .sigterm } label: {
                         Label("Send SIGTERM (graceful)", systemImage: "stop.circle")
                     }
                     .foregroundColor(.orange)
 
-                    Button(role: .destructive) {
-                        confirmKill = .sigkill
-                    } label: {
+                    Button(role: .destructive) { confirmKill = .sigkill } label: {
                         Label("Send SIGKILL (force)", systemImage: "xmark.octagon.fill")
                     }
                 }
@@ -377,20 +425,40 @@ struct ProcessDetailSheet: View {
                    isPresented: .constant(confirmKill != nil),
                    presenting: confirmKill) { mode in
                 Button("Send \(mode.label)", role: .destructive) {
-                    let sig  = mode.signal
-                    let pid  = Int32(process.pid)
+                    let sig = mode.signal
+                    let pid = Int32(process.pid)
                     confirmKill = nil
-                    let ret = Darwin.kill(pid, sig)
-                    killStatus = ret == 0
-                        ? "Sent \(mode.label) to pid \(pid)"
-                        : "kill() returned \(ret) (errno=\(errno)) — may need root"
+                    killProcess(pid: pid, signal: sig)
                 }
                 Button("Cancel", role: .cancel) { confirmKill = nil }
             } message: { mode in
-                Text("This will send \(mode.label) to pid \(process.pid).")
+                Text("This will send \(mode.label) to pid \(process.pid). Jetsam termination is attempted first.")
+            }
+            // Mirror isInitiating to pool state to clear spinner once rcio updates
+            .onChange(of: isRCReady) { ready in
+                if ready || isRCIniting == false { isInitiating = false }
             }
         }
     }
+
+    // MARK: - Kill helper
+
+    private func killProcess(pid: Int32, signal: Int32) {
+        // Attempt 1: Jetsam TERMINATE_PROCESS (bypasses signal delivery, more reliable post-sbx)
+        if jetsamTerminate(pid: pid) {
+            killStatus = "Jetsam terminated pid \(pid)"
+            return
+        }
+        // Attempt 2: Darwin kill() (works for mobile processes post-sbx-escape)
+        let ret = Darwin.kill(pid, signal)
+        if ret == 0 {
+            killStatus = "Sent \(signal == SIGKILL ? "SIGKILL" : "SIGTERM") to pid \(pid)"
+        } else {
+            killStatus = "kill() failed (errno=\(errno)) — may need root or RC"
+        }
+    }
+
+    // MARK: - View helpers
 
     @ViewBuilder
     private func infoRow(_ label: String, _ value: String) -> some View {
@@ -414,10 +482,9 @@ struct ProcessDetailSheet: View {
     }
 }
 
-// MARK: - FileManagerView with configurable start path
+// MARK: - FileManagerViewAtPath
+// (full implementation below — thin wrapper that opens the RC file manager at a specified path)
 
-/// Thin wrapper around FileManagerView that opens at a specified path.
-/// This allows ProcessInspectorView (and others) to deep-link into the file manager.
 struct FileManagerViewAtPath: View {
     let startPath: String
 
@@ -425,14 +492,14 @@ struct FileManagerViewAtPath: View {
     @ObservedObject private var rcio = RemoteFileIO.shared
 
     @State private var path: String
-    @State private var entries: [(name: String, isDir: Bool, size: Int64)] = []
-    @State private var listSource = ""
-    @State private var loading    = false
+    @State private var entries:   [(name: String, isDir: Bool, size: Int64)] = []
+    @State private var listSource  = ""
+    @State private var loading     = false
     @State private var status: String?
 
-    @State private var processOverride: String? = nil
+    @State private var processOverride:    String? = nil
     @State private var showProcessSelector = false
-    @State private var showPicker   = false
+    @State private var showPicker:  Bool   = false
     @State private var pickedData:  Data?
     @State private var pickedName:  String?
     @State private var previewPath:   String?
@@ -452,8 +519,6 @@ struct FileManagerViewAtPath: View {
     }
 
     var body: some View {
-        // Reuse FileManagerView's logic but pre-seeded with startPath.
-        // We embed the full file manager content here to share the startPath state.
         VStack(spacing: 0) {
             breadcrumb
             Divider()
@@ -493,7 +558,7 @@ struct FileManagerViewAtPath: View {
         .onChange(of: pickedData) { data in
             guard let data else { return }
             pickedData = nil
-            let name = pickedName ?? "lara_new_\(Int(Date().timeIntervalSince1970)).bin"
+            let name   = pickedName ?? "lara_new_\(Int(Date().timeIntervalSince1970)).bin"
             let target = (path == "/" ? "" : path) + "/" + name
             pickedName = nil
             DispatchQueue.global(qos: .userInitiated).async {
