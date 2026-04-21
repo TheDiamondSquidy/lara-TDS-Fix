@@ -39,7 +39,7 @@ private let MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK: UInt32 = 5
 
 struct JetsamProcess: Identifiable {
     let id      = UUID()
-    let pid:    Int32
+    let pid:    UInt32
     let uid:    UInt32
     let name:   String
     var targetBand:  Int  = 12
