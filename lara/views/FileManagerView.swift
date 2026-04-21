@@ -3,7 +3,8 @@
 //  lara
 //
 //  File manager backed by RemoteFileIO.
-//  All operations display tier, process, timing, and diagnostic strings.
+//  Debug panel: compact Processes button (opens ProcessSelectorView), op log,
+//  and a process override pill that routes all operations through a chosen process.
 //
 
 import SwiftUI
@@ -23,7 +24,7 @@ struct FileManagerView: View {
     @State private var status: String?
 
     // File operation state
-    @State private var selectedFile: String?          // path for picker overwrite
+    @State private var selectedFile: String?
     @State private var showPicker = false
     @State private var pickedData: Data?
     @State private var pickedName: String?
@@ -34,10 +35,13 @@ struct FileManagerView: View {
     @State private var showPreview = false
 
     // Debug panel
-    @State private var showDebug = true
-    @State private var showLog = false
-    @State private var showPool = true
+    @State private var showDebug   = true
+    @State private var showLog     = false
     @State private var lastOpResult: RCIOResult?
+
+    // Process selector / override
+    @State private var showProcessSelector = false
+    @State private var processOverride: String? = nil   // nil = auto routing
 
     // Delete
     @State private var deleteTarget: String?
@@ -48,8 +52,10 @@ struct FileManagerView: View {
 
     // Rename
     @State private var renameTarget: String?
-    @State private var renameDest: String = ""
-    @State private var showRename = false
+    @State private var renameDest:   String = ""
+    @State private var showRename    = false
+
+    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,29 +64,25 @@ struct FileManagerView: View {
             if showDebug { debugPanel }
             fileList
         }
-        .navigationTitle("File Manager")
+        .navigationTitle("RC File Manager")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 if let buf = copyBuffer {
-                    Button {
-                        handlePaste(buf)
-                    } label: {
+                    Button { handlePaste(buf) } label: {
                         Label("Paste \(buf.name)", systemImage: "doc.on.clipboard.fill")
                             .foregroundColor(.mint)
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
-
                 Button {
                     withAnimation { showDebug.toggle() }
                 } label: {
                     Image(systemName: showDebug ? "ant.fill" : "ant")
                         .foregroundColor(showDebug ? .orange : .secondary)
                 }
-
                 Button {
-                    showPicker = true
+                    showPicker   = true
                     selectedFile = nil
                 } label: {
                     Image(systemName: "plus")
@@ -114,6 +116,12 @@ struct FileManagerView: View {
             if let path = previewPath, let res = previewResult {
                 FilePreviewSheet(path: path, data: res.data, result: res.result)
             }
+        }
+        .sheet(isPresented: $showProcessSelector) {
+            ProcessSelectorView(
+                pathContext:      path,
+                selectedOverride: $processOverride
+            )
         }
         .onChange(of: pickedData) { data in
             guard let data else { return }
@@ -151,45 +159,82 @@ struct FileManagerView: View {
         path.components(separatedBy: "/").filter { !$0.isEmpty }
     }
 
-    // MARK: - Debug panel
+    // MARK: - Debug panel (streamlined)
 
     private var debugPanel: some View {
         VStack(spacing: 0) {
-            // Pool status row
-            HStack {
-                Text("RC POOL")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.orange)
-                Spacer()
-                Button(showPool ? "hide" : "show") { withAnimation { showPool.toggle() } }
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
-                Button(showLog ? "ops" : "ops") {
-                    withAnimation { showLog.toggle() }
+            HStack(spacing: 8) {
+                // Processes button — replaces old scrolling tile pool view
+                Button {
+                    showProcessSelector = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "cpu")
+                        Text(poolSummaryLabel)
+                            .font(.system(size: 11, design: .monospaced))
+                    }
                 }
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(showLog ? .orange : .secondary)
+                .buttonStyle(.bordered)
+                .tint(anyReady ? .green : .secondary)
+                .controlSize(.mini)
+
+                // Override indicator / auto-route label
+                if let ov = processOverride {
+                    Button {
+                        processOverride = nil
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.triangle.branch")
+                            Text(ov)
+                                .font(.system(size: 11, design: .monospaced))
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 9))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .controlSize(.mini)
+                } else {
+                    Text("→ \(rcio.rcBestProcess(for: path))")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // Log toggle
+                Button {
+                    withAnimation { showLog.toggle() }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "list.bullet.rectangle")
+                        if !rcio.log.isEmpty {
+                            Text("\(rcio.log.count)")
+                                .font(.system(size: 11, design: .monospaced))
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(showLog ? .orange : .secondary)
+                .controlSize(.mini)
             }
             .padding(.horizontal, 10)
             .padding(.top, 6)
 
-            if showPool && !showLog {
-                poolStatusView
-            }
-
+            // Op log inline view (shown when toggled)
             if showLog {
                 opLogView
             }
 
-            // Last operation summary
+            // Last operation result
             if let r = lastOpResult {
                 lastOpBar(r)
             }
 
-            // Directory list source
+            // Directory listing info
             if !listSource.isEmpty {
                 HStack {
-                    Text("dir source: \(listSource)  entries: \(entries.count)  path: \(path)")
+                    Text("src:\(listSource)  \(entries.count) entries")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -202,57 +247,6 @@ struct FileManagerView: View {
             Divider()
         }
         .background(Color(.tertiarySystemBackground))
-    }
-
-    private var poolStatusView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(poolEntries, id: \.process) { entry in
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.process)
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.primary)
-                        Text(entry.state.description)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(stateColor(entry.state))
-                        if case .failed = entry.state {
-                            Button("retry") {
-                                rcio.resetProc(entry.process)
-                            }
-                            .font(.system(size: 8, design: .monospaced))
-                            .foregroundColor(.orange)
-                        }
-                    }
-                    .padding(6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(stateColor(entry.state).opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .stroke(stateColor(entry.state).opacity(0.4), lineWidth: 1)
-                            )
-                    )
-                }
-
-                // Init buttons for uninitialized/failed
-                ForEach(initCandidates, id: \.self) { process in
-                    Button {
-                        initProcess(process)
-                    } label: {
-                        Label("init \(process)", systemImage: "bolt")
-                            .font(.system(size: 9, design: .monospaced))
-                    }
-                    .padding(6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Color.blue.opacity(0.1))
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.blue.opacity(0.3), lineWidth: 1))
-                    )
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-        }
     }
 
     private var opLogView: some View {
@@ -291,22 +285,32 @@ struct FileManagerView: View {
             Text(r.message)
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(r.ok ? .primary : .red)
+                .lineLimit(1)
             Spacer()
             Text(String(format: "%.0fms", r.duration * 1000))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(.secondary)
-            Text(r.tier.rawValue)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundColor(tierColor(r.tier))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(tierColor(r.tier).opacity(0.15))
-                )
+            tierBadge(r.tier)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func tierBadge(_ tier: RCIOTier) -> some View {
+        let color: Color = {
+            switch tier {
+            case .direct:     return .green
+            case .vfs:        return .blue
+            case .remoteCall: return .orange
+            case .failed:     return .red
+            }
+        }()
+        Text(tier.rawValue)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundColor(color)
+            .padding(.horizontal, 4).padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 3).fill(color.opacity(0.15)))
     }
 
     // MARK: - File list
@@ -320,7 +324,6 @@ struct FileManagerView: View {
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
             } else {
-                // Parent dir button
                 if path != "/" {
                     Button {
                         let parent = (path as NSString).deletingLastPathComponent
@@ -347,43 +350,37 @@ struct FileManagerView: View {
         let fullPath = (path == "/" ? "" : path) + "/" + entry.name
 
         HStack(spacing: 10) {
-            // Icon
             Image(systemName: entry.isDir ? "folder.fill" : fileIcon(for: entry.name))
                 .foregroundColor(entry.isDir ? .yellow : .secondary)
                 .frame(width: 22)
 
-            // Name + size
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.name)
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(1)
                 if !entry.isDir {
-                    Text(entry.size.fileSizeString)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        Text(entry.size.fileSizeString)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        // Show effective process — orange if override is active
+                        let effective = processOverride ?? rcio.rcBestProcess(for: fullPath)
+                        Text(effective)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(processOverride != nil ? .orange : .secondary)
+                            .padding(.horizontal, 3).padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill((processOverride != nil ? Color.orange : Color.secondary).opacity(0.1))
+                            )
+                    }
                 }
             }
 
             Spacer()
 
-            // Routed process badge for files
             if !entry.isDir {
-                Text(rcio.rcBestProcess(for: fullPath))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.orange.opacity(0.1))
-                    )
-            }
-
-            // Action buttons (files only)
-            if !entry.isDir {
-                Button {
-                    openPreview(path: fullPath)
-                } label: {
+                Button { openPreview(path: fullPath) } label: {
                     Image(systemName: "eye")
                 }
                 .buttonStyle(.borderless)
@@ -391,7 +388,7 @@ struct FileManagerView: View {
 
                 Button {
                     selectedFile = fullPath
-                    showPicker = true
+                    showPicker   = true
                 } label: {
                     Image(systemName: "arrow.up.doc")
                 }
@@ -400,9 +397,7 @@ struct FileManagerView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            if entry.isDir { navigate(to: fullPath) }
-        }
+        .onTapGesture { if entry.isDir { navigate(to: fullPath) } }
         .swipeActions(edge: .leading) {
             Button {
                 UIPasteboard.general.string = fullPath
@@ -423,8 +418,8 @@ struct FileManagerView: View {
 
             Button {
                 renameTarget = fullPath
-                renameDest = entry.name
-                showRename = true
+                renameDest   = entry.name
+                showRename   = true
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
@@ -432,7 +427,7 @@ struct FileManagerView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                deleteTarget = fullPath
+                deleteTarget      = fullPath
                 showDeleteConfirm = true
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -441,7 +436,7 @@ struct FileManagerView: View {
             if !entry.isDir {
                 Button {
                     selectedFile = fullPath
-                    showPicker = true
+                    showPicker   = true
                 } label: {
                     Label("Overwrite", systemImage: "arrow.up.doc.fill")
                 }
@@ -453,9 +448,6 @@ struct FileManagerView: View {
     // MARK: - Navigation and loading
 
     private func navigate(to newPath: String) {
-        // Resolve symlinks to canonical path — on iOS /private is a circular
-        // symlink to root, so without this tapping "private" builds
-        // /private/private/private/... forever while VFS lists root each time.
         var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
         let canonical = (Darwin.realpath(newPath, &buf) != nil) ? String(cString: buf) : newPath
         path = canonical
@@ -463,58 +455,54 @@ struct FileManagerView: View {
     }
 
     private func loadEntries() {
-        // Snapshot path on the main thread before dispatching — reading @State
-        // from a background thread is unsafe and returns stale values.
         let targetPath = path
-        loading = true
-        entries = []
+        loading    = true
+        entries    = []
         listSource = ""
         DispatchQueue.global(qos: .userInitiated).async {
             let (e, src) = rcio.listDir(path: targetPath)
             DispatchQueue.main.async {
-                // Discard result if user navigated away during the fetch
                 guard self.path == targetPath else { return }
-                self.entries = e
+                self.entries    = e
                 self.listSource = src
-                self.loading = false
+                self.loading    = false
             }
         }
     }
 
-    // MARK: - File operations
+    // MARK: - File operations (pass override through to rcio)
 
     private func handlePickedData(_ data: Data) {
         let target: String
         if let sel = selectedFile {
             target = sel
         } else {
-            // New file in current directory
             let name = pickedName ?? "lara_new_\(Int(Date().timeIntervalSince1970)).bin"
             target = path + "/" + name
         }
         selectedFile = nil
-        pickedName = nil
+        pickedName   = nil
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = rcio.write(path: target, data: data)
+            let result = rcio.write(path: target, data: data, override: self.processOverride)
             DispatchQueue.main.async {
                 self.lastOpResult = result
-                self.status = result.message
+                self.status       = result.message
                 if result.ok { self.loadEntries() }
             }
         }
     }
 
     private func openPreview(path: String) {
-        previewPath = path
+        previewPath   = path
         previewResult = nil
-        showPreview = true
+        showPreview   = true
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let (data, result) = rcio.read(path: path, maxSize: 256 * 1024)
+            let (data, result) = rcio.read(path: path, maxSize: 256 * 1024, override: self.processOverride)
             DispatchQueue.main.async {
                 self.previewResult = (data, result)
-                self.lastOpResult = result
+                self.lastOpResult  = result
             }
         }
     }
@@ -524,25 +512,24 @@ struct FileManagerView: View {
             let result = rcio.delete(path: path)
             DispatchQueue.main.async {
                 self.lastOpResult = result
-                self.status = result.message
+                self.status       = result.message
                 if result.ok { self.loadEntries() }
             }
         }
     }
 
     private func handlePaste(_ buf: (path: String, name: String)) {
-        // Copy file: read from source then write to current directory
         let dest = (path == "/" ? "" : path) + "/" + buf.name
         DispatchQueue.global(qos: .userInitiated).async {
-            let (data, readResult) = rcio.read(path: buf.path)
+            let (data, readResult) = rcio.read(path: buf.path, override: self.processOverride)
             guard let data else {
                 DispatchQueue.main.async { self.status = "Copy failed: \(readResult.message)" }
                 return
             }
-            let writeResult = rcio.write(path: dest, data: data)
+            let writeResult = rcio.write(path: dest, data: data, override: self.processOverride)
             DispatchQueue.main.async {
                 self.lastOpResult = writeResult
-                self.status = writeResult.message
+                self.status       = writeResult.message
                 if writeResult.ok {
                     self.copyBuffer = nil
                     self.loadEntries()
@@ -556,51 +543,25 @@ struct FileManagerView: View {
             let result = rcio.move(from: src, to: dst)
             DispatchQueue.main.async {
                 self.lastOpResult = result
-                self.status = result.message
+                self.status       = result.message
                 if result.ok { self.loadEntries() }
             }
         }
     }
 
-    // MARK: - RC pool helpers
+    // MARK: - Pool helpers
 
-    private var poolEntries: [RCPoolEntry] {
-        let order = ["SpringBoard", "configd", "mobileidentityd", "securityd", "dataaccessd", "mediaserverd"]
-        return order.compactMap { rcio.pool[$0] }
+    private var anyReady: Bool {
+        rcio.pool.values.contains { $0.state.isReady }
     }
 
-    private var initCandidates: [String] {
-        poolEntries
-            .filter { if case .uninitialized = $0.state { return true }; return false }
-            .map { $0.process }
+    private var poolSummaryLabel: String {
+        let ready = rcio.pool.values.filter { $0.state.isReady }.count
+        let total = RemoteFileIO.recommendedProcesses.count
+        return "Procs \(ready)/\(total)"
     }
 
-    private func initProcess(_ process: String) {
-        guard mgr.dsready else { status = "darksword not ready"; return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            _ = rcio.rcProc(for: process)
-        }
-    }
-
-    // MARK: - Colour helpers
-
-    private func stateColor(_ state: RCPoolEntry.State) -> Color {
-        switch state {
-        case .ready:         return .green
-        case .initializing:  return .blue
-        case .failed:        return .red
-        case .uninitialized: return .secondary
-        }
-    }
-
-    private func tierColor(_ tier: RCIOTier) -> Color {
-        switch tier {
-        case .direct:     return .green
-        case .vfs:        return .blue
-        case .remoteCall: return .orange
-        case .failed:     return .red
-        }
-    }
+    // MARK: - Colour / icon helpers
 
     private func fileIcon(for name: String) -> String {
         let ext = (name as NSString).pathExtension.lowercased()
@@ -618,11 +579,11 @@ struct FileManagerView: View {
     }
 }
 
-// MARK: - File preview sheet
+// MARK: - File preview sheet (unchanged from original)
 
 struct FilePreviewSheet: View {
-    let path: String
-    let data: Data?
+    let path:   String
+    let data:   Data?
     let result: RCIOResult
 
     @Environment(\.dismiss) private var dismiss
@@ -635,45 +596,29 @@ struct FilePreviewSheet: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Operation result banner
                 resultBanner
-
-                // Mode picker
                 Picker("Mode", selection: $viewMode) {
                     ForEach(PreviewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding()
-
                 Divider()
-
-                // Content
                 ScrollView {
                     if let data {
-                        contentView(data: data)
-                            .padding()
+                        contentView(data: data).padding()
                     } else {
                         VStack(spacing: 12) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.system(size: 40))
-                                .foregroundColor(.red)
-                            Text("Failed to read file")
-                                .font(.headline)
-                            Text(result.diagnostic)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(40)
+                            Image(systemName: "exclamationmark.triangle").font(.system(size: 40)).foregroundColor(.red)
+                            Text("Failed to read file").font(.headline)
+                            Text(result.diagnostic).font(.system(size: 12, design: .monospaced)).foregroundColor(.secondary).multilineTextAlignment(.center)
+                        }.padding(40)
                     }
                 }
             }
             .navigationTitle(filename)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                 if let data {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         ShareLink(item: data, preview: SharePreview(filename))
@@ -686,97 +631,55 @@ struct FilePreviewSheet: View {
     @ViewBuilder
     private var resultBanner: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(result.ok ? Color.green : Color.red)
-                .frame(width: 7, height: 7)
-
+            Circle().fill(result.ok ? Color.green : Color.red).frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 2) {
-                Text(result.message)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                Text(result.message).font(.system(size: 11, weight: .medium, design: .monospaced))
                 if !result.diagnostic.isEmpty && result.diagnostic != result.message {
-                    Text(result.diagnostic)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    Text(result.diagnostic).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary)
                 }
             }
-
             Spacer()
-
             VStack(alignment: .trailing, spacing: 2) {
-                Text(result.tier.rawValue)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(tierBadgeColor)
-                if let proc = result.process {
-                    Text(proc)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-                Text(String(format: "%.0fms", result.duration * 1000))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
+                let c: Color = { switch result.tier {
+                    case .direct: return .green; case .vfs: return .blue
+                    case .remoteCall: return .orange; case .failed: return .red
+                }}()
+                Text(result.tier.rawValue).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(c)
+                if let proc = result.process { Text(proc).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary) }
+                Text(String(format: "%.0fms", result.duration * 1000)).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14).padding(.vertical, 8)
         .background(Color(.secondarySystemBackground))
-    }
-
-    private var tierBadgeColor: Color {
-        switch result.tier {
-        case .direct:     return .green
-        case .vfs:        return .blue
-        case .remoteCall: return .orange
-        case .failed:     return .red
-        }
     }
 
     @ViewBuilder
     private func contentView(data: Data) -> some View {
         switch effectiveMode(for: data) {
         case .plist:
-            if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-               let xml = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0),
-               let str = String(data: xml, encoding: .utf8) {
-                Text(str)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                fallbackText(data: data)
-            }
-
-        case .text:
-            fallbackText(data: data)
-
+            if let pl = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+               let xd = try? PropertyListSerialization.data(fromPropertyList: pl, format: .xml, options: 0),
+               let xs = String(data: xd, encoding: .utf8) {
+                Text(xs).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            } else { fallbackText(data: data) }
+        case .text: fallbackText(data: data)
         case .hex:
-            Text(hexDump(data: data))
-                .font(.system(size: 11, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-        case .auto:
-            EmptyView() // should not reach
+            Text(hexDump(data: data)).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+        case .auto: EmptyView()
         }
     }
 
     @ViewBuilder
     private func fallbackText(data: Data) -> some View {
         if let str = String(data: data, encoding: .utf8) {
-            Text(str)
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(str).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(hexDump(data: data))
-                .font(.system(size: 11, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(hexDump(data: data)).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func effectiveMode(for data: Data) -> PreviewMode {
         if viewMode != .auto { return viewMode }
-        // Auto-detect
         if (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil { return .plist }
         if String(data: data.prefix(512), encoding: .utf8) != nil { return .text }
         return .hex
@@ -797,7 +700,7 @@ struct FilePreviewSheet: View {
     }
 }
 
-// MARK: - File picker wrapper
+// MARK: - File picker wrapper (unchanged)
 
 private struct RCFilePicker: UIViewControllerRepresentable {
     @Binding var data: Data?
@@ -808,19 +711,17 @@ private struct RCFilePicker: UIViewControllerRepresentable {
         p.delegate = context.coordinator
         return p
     }
-
     func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let parent: RCFilePicker
         init(_ p: RCFilePicker) { parent = p }
-
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             guard let url = urls.first else { return }
             _ = url.startAccessingSecurityScopedResource()
             defer { url.stopAccessingSecurityScopedResource() }
-            parent.data = try? Data(contentsOf: url)
+            parent.data     = try? Data(contentsOf: url)
             parent.filename = url.lastPathComponent
         }
     }
