@@ -19,7 +19,7 @@ struct FileManagerView: View {
     @ObservedObject private var mgr  = laramgr.shared
     @ObservedObject private var rcio = RemoteFileIO.shared
 
-    @State private var path: String = "/private/var"
+    @State private var path: String = "/"
     @State private var entries: [(name: String, isDir: Bool, size: Int64)] = []
     @State private var listSource: String = ""
     @State private var loading    = false
@@ -45,6 +45,15 @@ struct FileManagerView: View {
     @State private var showProcessSelector = false
     @State private var processOverride: String? = nil   // nil = auto-routing
 
+    // Lara FM sheet — presented as a sheet (NOT NavigationLink) to avoid the
+    // UINavigationController-inside-NavigationStack conflict that causes the
+    // ghost second tab bar at the bottom of the screen.
+    @State private var showLaraFM = false
+
+    // Cancellable directory load — cancelled when user navigates away,
+    // preventing the old result from clobbering a newer path's listing.
+    @State private var currentLoadWorkItem: DispatchWorkItem?
+
     // Delete
     @State private var deleteTarget:   String?
     @State private var showDeleteConfirm = false
@@ -69,10 +78,12 @@ struct FileManagerView: View {
         .navigationTitle("RC File Manager")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            // Leading: access to Lara FM
+            // Leading: access to Lara FM — presented as a sheet, NOT a
+            // NavigationLink, so SantanderBrowserSheet's UINavigationController
+            // is isolated from the SwiftUI NavigationStack (fixes double tab bar).
             ToolbarItem(placement: .navigationBarLeading) {
-                NavigationLink {
-                    SantanderView(startPath: "/")
+                Button {
+                    showLaraFM = true
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "folder")
@@ -133,6 +144,12 @@ struct FileManagerView: View {
             if let path = previewPath, let res = previewResult {
                 FilePreviewSheet(path: path, data: res.data, result: res.result)
             }
+        }
+        .sheet(isPresented: $showLaraFM) {
+            // Full-screen presentation keeps UINavigationController isolated.
+            // No .navigationBarHidden needed — the sheet has its own presentation context.
+            SantanderView(startPath: "/")
+                .ignoresSafeArea()
         }
         .sheet(isPresented: $showProcessSelector) {
             ProcessSelectorView(
@@ -483,22 +500,27 @@ struct FileManagerView: View {
     }
 
     private func loadEntries() {
-        // Snapshot path on the main thread before dispatching.
+        // Cancel any in-flight load before starting a new one.
+        // This prevents a slow RC call from clobbering a subsequent navigation.
+        currentLoadWorkItem?.cancel()
+
         let targetPath = path
         loading    = true
         entries    = []
         listSource = ""
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let (e, src) = rcio.listDir(path: targetPath)
+        let item = DispatchWorkItem {
+            let (e, src) = self.rcio.listDir(path: targetPath)
             DispatchQueue.main.async {
-                // Discard if user navigated away during fetch
-                guard self.path == targetPath else { return }
+                // Discard stale results if the path changed or the task was cancelled
+                guard self.path == targetPath, !(self.currentLoadWorkItem?.isCancelled ?? true) else { return }
                 self.entries    = e
                 self.listSource = src
                 self.loading    = false
             }
         }
+        currentLoadWorkItem = item
+        DispatchQueue.global(qos: .userInitiated).async(execute: item)
     }
 
     // MARK: - File operations
