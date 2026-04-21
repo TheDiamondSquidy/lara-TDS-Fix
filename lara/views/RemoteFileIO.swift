@@ -291,9 +291,9 @@ final class RemoteFileIO: ObservableObject {
         var count: Int32 = 0
         guard let ptr = proclist(nil, &count), count > 0 else { return [] }
         defer { free_proclist(ptr) }
-        return (0..<Int(count)).compactMap { i in
+        return (0..<Int(count)).compactMap { (i: Int) -> RunningProcess? in // Added explicit return type
             let e = ptr[i]
-            guard e.pid > 1 else { return nil }
+            guard e.pid > 1 else { return nil } // Now compatible!
             let name = withUnsafeBytes(of: e.name) { raw -> String in
                 let b = raw.bindMemory(to: UInt8.self)
                 let end = b.firstIndex(of: 0) ?? b.endIndex
