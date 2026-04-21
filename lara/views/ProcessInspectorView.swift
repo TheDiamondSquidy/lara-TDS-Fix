@@ -319,7 +319,7 @@ struct ProcessDetailSheet: View {
                 }
 
                 // File jurisdiction
-                Section("File Jurisdiction") {
+                Section(header: Text("File Jurisdiction")) {
                     // Navigate button — pushes RC file manager at the suggested path
                     NavigationLink {
                         FileManagerViewAtPath(startPath: process.suggestedPath)
