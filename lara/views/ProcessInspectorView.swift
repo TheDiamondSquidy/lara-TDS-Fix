@@ -18,6 +18,7 @@
 
 import SwiftUI
 import Darwin
+import UniformTypeIdentifiers
 
 // MARK: - proc_pidinfo binding
 
