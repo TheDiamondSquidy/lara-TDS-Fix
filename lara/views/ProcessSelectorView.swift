@@ -295,8 +295,8 @@ struct ProcessSelectorView: View {
                             .font(.system(size: 32))
                             .foregroundColor(.secondary)
                         Text(searchText.isEmpty
-                             ? "No processes match "\(activeFilter.rawValue)""
-                             : "No results for "\(searchText)"")
+                             ? "No processes match \"\(activeFilter.rawValue)\""
+                             : "No results for \"\(searchText)\"")
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(.secondary)
                         Spacer()
