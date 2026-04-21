@@ -1,10 +1,14 @@
 //
 //  ContentView.swift
-//  lara
+//  lara — TDS fork
 //
-//  Created by ruter on 23.03.26.
-//  Fork: added File Manager, My Tweaks, and Logs tabs.
-//  The Home tab is intentionally verbatim from upstream — do not edit it.
+//  4-tab layout:
+//    Tab 1  File Manager   — RC FM shown directly; Lara FM reachable via toolbar
+//    Tab 2  Home           — verbatim upstream, not modified
+//    Tab 3  Tweaks         — fork-only features (Jetsam, Process Inspector)
+//    Tab 4  Logs           — lara operation log
+//
+//  Single-level NavigationStack per tab — no hub screens, no double nav bars.
 //
 
 import SwiftUI
@@ -13,77 +17,30 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @AppStorage("showfmintabs") private var showfmintabs: Bool = true
     @ObservedObject private var mgr = laramgr.shared
-    @State private var hasoffsets = true
-    @State private var showsettings = false
+    @State private var hasoffsets     = true
+    @State private var showsettings   = false
     @State private var selectedmethod: method = .hybrid
 
     var body: some View {
         TabView {
 
-            // MARK: - Tab 1: File Manager (dual-view)
+            // ── Tab 1: File Manager ──────────────────────────────────────────
+            // RC FM is the primary view. Lara FM is accessed via the toolbar
+            // "Lara FM" button (NavigationLink push). One nav bar, no hub screen.
             NavigationStack {
-                List {
-                    Section {
-                        NavigationLink {
-                            SantanderView(startPath: "/")
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "folder.fill")
-                                    .foregroundColor(.blue)
-                                    .frame(width: 28)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("File Manager")
-                                    Text("Standard lara file browser")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        .disabled(!mgr.sbxready && !mgr.vfsready)
-
-                        NavigationLink {
-                            FileManagerView()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "folder.badge.gear")
-                                    .foregroundColor(.orange)
-                                    .frame(width: 28)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("RC File Manager")
-                                    Text("RemoteCall-backed, full filesystem reach")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        .disabled(!mgr.dsready)
-                    } header: {
-                        Text("Choose a file browser")
-                    } footer: {
-                        Group {
-                            if !mgr.sbxready && !mgr.vfsready {
-                                Text("File Manager requires Sandbox Escape or VFS.")
-                            }
-                            if !mgr.dsready {
-                                Text("RC File Manager requires the exploit to be run first.")
-                            }
-                        }
-                    }
-                }
-                .navigationTitle("Files")
+                FileManagerView()
             }
-            .tabItem { Label("File Manager", systemImage: "folder") }
+            .tabItem { Label("Files", systemImage: "folder.badge.gear") }
 
-            // MARK: - Tab 2: Home (verbatim from upstream — do not modify)
+            // ── Tab 2: Home ─────────────────────────────────────────────────
+            // Verbatim upstream — do NOT edit this section.
             NavigationStack {
                 List {
                     if !hasoffsets {
                         Section("Setup") {
                             Text("Kernelcache offsets are missing. Download them in Settings.")
                                 .foregroundColor(.secondary)
-                            Button("Open Settings") {
-                                showsettings = true
-                            }
+                            Button("Open Settings") { showsettings = true }
                         }
                     } else {
                         Section {
@@ -100,24 +57,20 @@ struct ContentView: View {
                                         Spacer()
                                         Text("\(Int(mgr.dsprogress * 100))%")
                                     }
-                                } else {
-                                    if mgr.dsready {
-                                        HStack {
-                                            Text("Ran Exploit")
-                                            Spacer()
-                                            Image(systemName: "checkmark.circle")
-                                                .foregroundColor(.green)
-                                        }
-                                    } else if mgr.dsattempted && mgr.dsfailed {
-                                        HStack {
-                                            Text("Exploit Failed")
-                                            Spacer()
-                                            Image(systemName: "xmark.circle")
-                                                .foregroundColor(.red)
-                                        }
-                                    } else {
-                                        Text("Run Exploit")
+                                } else if mgr.dsready {
+                                    HStack {
+                                        Text("Ran Exploit")
+                                        Spacer()
+                                        Image(systemName: "checkmark.circle").foregroundColor(.green)
                                     }
+                                } else if mgr.dsattempted && mgr.dsfailed {
+                                    HStack {
+                                        Text("Exploit Failed")
+                                        Spacer()
+                                        Image(systemName: "xmark.circle").foregroundColor(.red)
+                                    }
+                                } else {
+                                    Text("Run Exploit")
                                 }
                             }
                             .disabled(mgr.dsrunning)
@@ -132,7 +85,6 @@ struct ContentView: View {
                                         .font(.system(.body, design: .monospaced))
                                         .foregroundColor(.secondary)
                                 }
-
                                 HStack {
                                     Text("kernel_slide:")
                                     Spacer()
@@ -143,12 +95,8 @@ struct ContentView: View {
                             }
 
                             if isdebugged() {
-                                Button {
-                                    exit(0)
-                                } label: {
-                                    Text("Detach")
-                                }
-                                .foregroundColor(.red)
+                                Button { exit(0) } label: { Text("Detach") }
+                                    .foregroundColor(.red)
                             }
                         } header: {
                             Text("Kernel Read Write")
@@ -156,7 +104,6 @@ struct ContentView: View {
                             if g_isunsupported {
                                 Text("Your device/installation method may not be supported.")
                             }
-
                             if isdebugged() {
                                 Text("Not available while debugger is attached.")
                             }
@@ -181,8 +128,7 @@ struct ContentView: View {
                                             HStack {
                                                 Text("VFS Init Failed")
                                                 Spacer()
-                                                Image(systemName: "xmark.circle")
-                                                    .foregroundColor(.red)
+                                                Image(systemName: "xmark.circle").foregroundColor(.red)
                                             }
                                         } else {
                                             Text("Initialise VFS")
@@ -191,8 +137,7 @@ struct ContentView: View {
                                         HStack {
                                             Text("Initialised VFS")
                                             Spacer()
-                                            Image(systemName: "checkmark.circle")
-                                                .foregroundColor(.green)
+                                            Image(systemName: "checkmark.circle").foregroundColor(.green)
                                         }
                                     }
                                 }
@@ -201,62 +146,40 @@ struct ContentView: View {
                                 if mgr.vfsready {
                                     NavigationLink("Tweaks") {
                                         List {
-                                            NavigationLink("Font Overwrite") {
-                                                FontPicker(mgr: mgr)
-                                            }
-
-                                            NavigationLink("Card Overwrite") {
-                                                CardView()
-                                            }
-
-                                            NavigationLink("Custom Overwrite") {
-                                                CustomView(mgr: mgr)
-                                            }
-
-                                            NavigationLink("DirtyZero (Broken)") {
-                                                ZeroView(mgr: mgr)
-                                            }
-
-                                            if !showfmintabs {
-                                                NavigationLink("File Manager") {
-                                                    SantanderView(startPath: "/")
-                                                }
-                                                NavigationLink("RC File Manager") {
-                                                    FileManagerView()
-                                                }
-                                            }
+                                            NavigationLink("Font Overwrite") { FontPicker(mgr: mgr) }
+                                            NavigationLink("Card Overwrite") { CardView() }
+                                            NavigationLink("Custom Overwrite") { CustomView(mgr: mgr) }
+                                            NavigationLink("DirtyZero (Broken)") { ZeroView(mgr: mgr) }
                                         }
-                                        .navigationTitle(Text("Tweaks"))
+                                        .navigationTitle("Tweaks")
                                     }
                                 }
+
                             } else if selectedmethod == .sbx {
                                 Button {
                                     mgr.sbxescape()
                                 } label: {
                                     if mgr.sbxrunning {
                                         HStack {
-                                            ProgressView()
-                                                .progressViewStyle(.circular)
+                                            ProgressView().progressViewStyle(.circular)
                                                 .frame(width: 18, height: 18)
                                             Text("Escaping Sandbox...")
                                         }
                                     } else if !mgr.sbxready {
                                         if mgr.sbxattempted && mgr.sbxfailed {
                                             HStack {
-                                                Text("Sandbox Escape Failed")
+                                                Text("SBX Failed")
                                                 Spacer()
-                                                Image(systemName: "xmark.circle")
-                                                    .foregroundColor(.red)
+                                                Image(systemName: "xmark.circle").foregroundColor(.red)
                                             }
                                         } else {
                                             Text("Escape Sandbox")
                                         }
                                     } else {
                                         HStack {
-                                            Text("Sandbox Escaped")
+                                            Text("Escaped Sandbox")
                                             Spacer()
-                                            Image(systemName: "checkmark.circle")
-                                                .foregroundColor(.green)
+                                            Image(systemName: "checkmark.circle").foregroundColor(.green)
                                         }
                                     }
                                 }
@@ -265,178 +188,100 @@ struct ContentView: View {
                                 if mgr.sbxready {
                                     NavigationLink("Tweaks") {
                                         List {
-                                            if !showfmintabs {
-                                                NavigationLink("File Manager") {
-                                                    SantanderView(startPath: "/")
-                                                }
-                                            }
-
-                                            NavigationLink("Card Overwrite") {
-                                                CardView()
-                                            }
-
-                                            NavigationLink("3 App Bypass") {
-                                                AppsView(mgr: mgr)
-                                            }
-
-                                            NavigationLink("VarClean") {
-                                                VarCleanView()
-                                            }
-
-                                            NavigationLink("Unblacklist (Broken?)") {
-                                                WhitelistView()
-                                            }
-
-                                            if 1 == 2 {
-                                                NavigationLink("MobileGestalt") {
-                                                    EditorView()
-                                                }
-
-                                                NavigationLink("Passcode Theme") {
-                                                    PasscodeView(mgr: mgr)
-                                                }
-                                            }
+                                            NavigationLink("Card Overwrite") { CardView() }
+                                            NavigationLink("3 App Bypass") { AppsView(mgr: mgr) }
+                                            NavigationLink("VarClean") { VarCleanView() }
+                                            NavigationLink("Unblacklist (Broken?)") { WhitelistView() }
                                         }
-                                        .navigationTitle(Text("Tweaks"))
+                                        .navigationTitle("Tweaks")
                                     }
                                 }
-                            } else {
-                                if !mgr.sbxattempted {
-                                    Button {
-                                        mgr.sbxescape()
-                                    } label: {
-                                        if mgr.sbxrunning {
+
+                            } else { // .hybrid
+                                Button {
+                                    mgr.sbxescape()
+                                } label: {
+                                    if mgr.sbxrunning {
+                                        HStack {
+                                            ProgressView().progressViewStyle(.circular)
+                                                .frame(width: 18, height: 18)
+                                            Text("Escaping Sandbox...")
+                                        }
+                                    } else if !mgr.sbxready {
+                                        if mgr.sbxattempted && mgr.sbxfailed {
                                             HStack {
-                                                ProgressView()
-                                                    .progressViewStyle(.circular)
-                                                    .frame(width: 18, height: 18)
-                                                Text("Escaping Sandbox...")
-                                            }
-                                        } else if !mgr.sbxready {
-                                            if mgr.sbxattempted && mgr.sbxfailed {
-                                                HStack {
-                                                    Text("Sandbox Escape Failed")
-                                                    Spacer()
-                                                    Image(systemName: "xmark.circle")
-                                                        .foregroundColor(.red)
-                                                }
-                                            } else {
-                                                Text("Escape Sandbox")
+                                                Text("SBX Failed")
+                                                Spacer()
+                                                Image(systemName: "xmark.circle").foregroundColor(.red)
                                             }
                                         } else {
-                                            HStack {
-                                                Text("Sandbox Escaped")
-                                                Spacer()
-                                                Image(systemName: "checkmark.circle")
-                                                    .foregroundColor(.green)
-                                            }
+                                            Text("Escape Sandbox")
+                                        }
+                                    } else {
+                                        HStack {
+                                            Text("Escaped Sandbox")
+                                            Spacer()
+                                            Image(systemName: "checkmark.circle").foregroundColor(.green)
                                         }
                                     }
-                                    .disabled(!mgr.dsready || mgr.sbxready || mgr.sbxrunning)
-                                } else {
-                                    Button {
-                                        mgr.vfsinit()
-                                    } label: {
-                                        if mgr.vfsrunning {
-                                            HStack {
-                                                ProgressView(value: mgr.vfsprogress)
-                                                    .progressViewStyle(.circular)
-                                                    .frame(width: 18, height: 18)
-                                                Text("Initialising VFS...")
-                                                Spacer()
-                                                Text("\(Int(mgr.vfsprogress * 100))%")
-                                            }
-                                        } else if !mgr.vfsready {
-                                            if mgr.vfsattempted && mgr.vfsfailed {
-                                                HStack {
-                                                    Text("VFS Init Failed")
-                                                    Spacer()
-                                                    Image(systemName: "xmark.circle")
-                                                        .foregroundColor(.red)
-                                                }
-                                            } else {
-                                                Text("Initialise VFS")
-                                            }
-                                        } else {
-                                            HStack {
-                                                Text("Initialised Hybrid")
-                                                Spacer()
-                                                Image(systemName: "checkmark.circle")
-                                                    .foregroundColor(.green)
-                                            }
-                                        }
-                                    }
-                                    .disabled(!mgr.dsready || mgr.vfsready || mgr.vfsrunning)
                                 }
+                                .disabled(!mgr.dsready || mgr.sbxready || mgr.sbxrunning)
+
+                                Button {
+                                    mgr.vfsinit()
+                                } label: {
+                                    if mgr.vfsrunning {
+                                        HStack {
+                                            ProgressView(value: mgr.vfsprogress)
+                                                .progressViewStyle(.circular)
+                                                .frame(width: 18, height: 18)
+                                            Text("Initialising VFS...")
+                                            Spacer()
+                                            Text("\(Int(mgr.vfsprogress * 100))%")
+                                        }
+                                    } else if !mgr.vfsready {
+                                        if mgr.vfsattempted && mgr.vfsfailed {
+                                            HStack {
+                                                Text("VFS Init Failed")
+                                                Spacer()
+                                                Image(systemName: "xmark.circle").foregroundColor(.red)
+                                            }
+                                        } else {
+                                            Text("Initialise VFS")
+                                        }
+                                    } else {
+                                        HStack {
+                                            Text("Initialised VFS")
+                                            Spacer()
+                                            Image(systemName: "checkmark.circle").foregroundColor(.green)
+                                        }
+                                    }
+                                }
+                                .disabled(!mgr.dsready || mgr.vfsready || mgr.vfsrunning || !mgr.sbxready)
 
                                 if mgr.vfsready && mgr.sbxready {
                                     NavigationLink("Tweaks") {
                                         List {
-                                            if !showfmintabs {
-                                                NavigationLink("File Manager") {
-                                                    SantanderView(startPath: "/")
-                                                }
-                                            }
-
-                                            NavigationLink("Font Overwrite") {
-                                                FontPicker(mgr: mgr)
-                                            }
-
-                                            NavigationLink("Card Overwrite") {
-                                                CardView()
-                                            }
-
-                                            NavigationLink("Custom Overwrite") {
-                                                CustomView(mgr: mgr)
-                                            }
-
-                                            NavigationLink("MobileGestalt") {
-                                                EditorView()
-                                            }
-
-                                            NavigationLink("3 App Bypass") {
-                                                AppsView(mgr: mgr)
-                                            }
-
-                                            NavigationLink("VarClean") {
-                                                VarCleanView()
-                                            }
-
-                                            NavigationLink("Whitelist") {
-                                                WhitelistView()
-                                            }
-
-                                            NavigationLink("DirtyZero") {
-                                                ZeroView(mgr: mgr)
-                                            }
-
-                                            if 1 == 2 {
-                                                NavigationLink("Control Center") {
-                                                    CCView()
-                                                }
-
-                                                NavigationLink("DarkBoard") {
-                                                    DarkBoardView()
-                                                }
-
-                                                NavigationLink("Passcode Theme") {
-                                                    PasscodeView(mgr: mgr)
-                                                }
-
-                                                NavigationLink("3 App Bypass") {
-                                                    AppsView(mgr: mgr)
-                                                }
-                                            }
+                                            NavigationLink("Font Overwrite") { FontPicker(mgr: mgr) }
+                                            NavigationLink("Card Overwrite") { CardView() }
+                                            NavigationLink("Custom Overwrite") { CustomView(mgr: mgr) }
+                                            NavigationLink("MobileGestalt") { EditorView() }
+                                            NavigationLink("3 App Bypass") { AppsView(mgr: mgr) }
+                                            NavigationLink("VarClean") { VarCleanView() }
+                                            NavigationLink("Whitelist") { WhitelistView() }
+                                            NavigationLink("DirtyZero") { ZeroView(mgr: mgr) }
                                         }
-                                        .navigationTitle(Text("Tweaks"))
+                                        .navigationTitle("Tweaks")
                                     }
                                 }
                             }
                         } header: {
-                            Text(selectedmethod == .vfs ? "Virtual File System" : (selectedmethod == .sbx ? "Sandbox Escape" : "Hybrid (SBX + VFS)"))
+                            Text(selectedmethod == .vfs ? "Virtual File System"
+                                 : selectedmethod == .sbx ? "Sandbox Escape"
+                                 : "Hybrid (SBX + VFS)")
                         } footer: {
                             if selectedmethod == .sbx {
-                                Text("Font Overwrite is only available in VFS or Hybrid mode. (Settings -> Method -> VFS/Hybrid)")
+                                Text("Font Overwrite is only available in VFS or Hybrid mode.")
                             }
                         }
 
@@ -462,8 +307,7 @@ struct ContentView: View {
                                     HStack {
                                         Text("Initialised RemoteCall")
                                         Spacer()
-                                        Image(systemName: "checkmark.circle")
-                                            .foregroundColor(.green)
+                                        Image(systemName: "checkmark.circle").foregroundColor(.green)
                                     }
                                 }
                             }
@@ -471,29 +315,17 @@ struct ContentView: View {
                             .disabled(isdebugged())
 
                             if mgr.rcready {
-                                NavigationLink("Tweaks") {
-                                    RemoteView(mgr: mgr)
-                                }
-
-                                Button("Destroy RemoteCall") {
-                                    mgr.rcdestroy()
-                                }
+                                NavigationLink("Tweaks") { RemoteView(mgr: mgr) }
+                                Button("Destroy RemoteCall") { mgr.rcdestroy() }
                             }
 
                             if isdebugged() {
-                                Button {
-                                    exit(0)
-                                } label: {
-                                    Text("Detach")
-                                }
-                                .foregroundColor(.red)
+                                Button { exit(0) } label: { Text("Detach") }.foregroundColor(.red)
                             }
                         } header: {
                             Text("RemoteCall")
                         } footer: {
-                            if isdebugged() {
-                                Text("Not available when a debugger is attached.")
-                            }
+                            if isdebugged() { Text("Not available when a debugger is attached.") }
                             Text("RemoteCall is still in development and may not work properly 100% of the time.")
                         }
                         .disabled(mgr.rcrunning)
@@ -501,19 +333,10 @@ struct ContentView: View {
 
                         Section {
                             if mgr.dsready {
-                                NavigationLink("Tools") {
-                                    ToolsView()
-                                }
+                                NavigationLink("Tools") { ToolsView() }
                             }
-
-                            Button("Respring") {
-                                mgr.respring()
-                            }
-
-                            Button("Panic!") {
-                                mgr.panic()
-                            }
-                            .disabled(!mgr.dsready)
+                            Button("Respring") { mgr.respring() }
+                            Button("Panic!") { mgr.panic() }.disabled(!mgr.dsready)
                         } header: {
                             Text("Other")
                         }
@@ -522,25 +345,20 @@ struct ContentView: View {
                 .navigationTitle("lara")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            showsettings = true
-                        } label: {
-                            Image(systemName: "gear")
-                        }
+                        Button { showsettings = true } label: { Image(systemName: "gear") }
                     }
                 }
             }
-            .tabItem {
-                Label("Home", systemImage: "house")
-            }
+            .tabItem { Label("Home", systemImage: "house") }
 
-            // MARK: - Tab 3: My Fork's Tweaks
+            // ── Tab 3: Fork Tweaks ───────────────────────────────────────────
+            // Only fork-specific features — no upstream tweaks here.
             NavigationStack {
-                ForkTweaksView(mgr: mgr, selectedmethod: selectedmethod)
+                ForkTweaksView(mgr: mgr)
             }
-            .tabItem { Label("My Tweaks", systemImage: "wrench.and.screwdriver") }
+            .tabItem { Label("Tweaks", systemImage: "wrench.and.screwdriver") }
 
-            // MARK: - Tab 4: Logs
+            // ── Tab 4: Logs ──────────────────────────────────────────────────
             NavigationStack {
                 ForkLogsView(mgr: mgr)
             }
@@ -550,9 +368,7 @@ struct ContentView: View {
         .sheet(isPresented: $showsettings) {
             SettingsView(mgr: mgr, hasoffsets: $hasoffsets)
         }
-        .onAppear {
-            refreshselectedmethod()
-        }
+        .onAppear { refreshselectedmethod() }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
             refreshselectedmethod()
         }
@@ -566,82 +382,55 @@ struct ContentView: View {
     }
 }
 
-// MARK: - My Fork's Tweaks tab
+// MARK: - Fork Tweaks tab
 
-/// A standalone tweaks list for this fork.
-/// Contains all method-appropriate upstream tweaks PLUS fork-specific features
-/// (RC File Manager, Jetsam Memory Manager).
+/// Jetsam and Process Inspector only. Upstream tweaks remain in the Home tab.
 struct ForkTweaksView: View {
     @ObservedObject var mgr: laramgr
-    let selectedmethod: method
 
     var body: some View {
         List {
-            // Fork-specific features — always visible
-            Section("Fork Features") {
-                NavigationLink {
-                    FileManagerView()
-                } label: {
-                    Label("RC File Manager", systemImage: "folder.badge.gear")
-                }
-                .disabled(!mgr.dsready)
-
+            Section("Memory & Processes") {
                 NavigationLink {
                     JetsamView()
                 } label: {
-                    Label("Jetsam Memory Manager", systemImage: "memorychip")
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Jetsam Manager")
+                            Text("Raise priority bands, set memory limits")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "memorychip")
+                    }
                 }
-            }
 
-            // RC tweaks — shown when RemoteCall is ready
-            #if !DISABLE_REMOTECALL
-            if mgr.rcready {
-                Section("RemoteCall Tweaks") {
-                    NavigationLink("SpringBoard Tweaks") {
-                        RemoteView(mgr: mgr)
+                NavigationLink {
+                    ProcessInspectorView()
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Process Inspector")
+                            Text("Browse, inspect, and manage running processes")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "cpu.fill")
                     }
                 }
             }
-            #endif
 
-            // Method-appropriate tweaks
-            if selectedmethod == .vfs, mgr.vfsready {
-                Section("VFS Tweaks") {
-                    NavigationLink("Font Overwrite") { FontPicker(mgr: mgr) }
-                    NavigationLink("Card Overwrite") { CardView() }
-                    NavigationLink("Custom Overwrite") { CustomView(mgr: mgr) }
-                    NavigationLink("DirtyZero (Broken)") { ZeroView(mgr: mgr) }
-                }
-            } else if selectedmethod == .sbx, mgr.sbxready {
-                Section("Sandbox Tweaks") {
-                    NavigationLink("Card Overwrite") { CardView() }
-                    NavigationLink("3 App Bypass") { AppsView(mgr: mgr) }
-                    NavigationLink("VarClean") { VarCleanView() }
-                    NavigationLink("Unblacklist (Broken?)") { WhitelistView() }
-                }
-            } else if selectedmethod == .hybrid, mgr.vfsready, mgr.sbxready {
-                Section("Tweaks") {
-                    NavigationLink("Font Overwrite") { FontPicker(mgr: mgr) }
-                    NavigationLink("Card Overwrite") { CardView() }
-                    NavigationLink("Custom Overwrite") { CustomView(mgr: mgr) }
-                    NavigationLink("MobileGestalt") { EditorView() }
-                    NavigationLink("3 App Bypass") { AppsView(mgr: mgr) }
-                    NavigationLink("VarClean") { VarCleanView() }
-                    NavigationLink("Whitelist") { WhitelistView() }
-                    NavigationLink("DirtyZero") { ZeroView(mgr: mgr) }
-                }
-            } else if !mgr.vfsready && !mgr.sbxready {
+            if !mgr.dsready {
                 Section {
                     HStack {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundColor(.secondary)
-                        Text("Initialise the exploit on the Home tab first.")
-                            .foregroundColor(.secondary)
+                        Image(systemName: "exclamationmark.triangle").foregroundColor(.secondary)
+                        Text("Run the exploit on the Home tab to unlock Jetsam controls.")
+                            .foregroundColor(.secondary).font(.callout)
                     }
                 }
             }
         }
-        .navigationTitle("My Tweaks")
+        .navigationTitle("Tweaks")
     }
 }
 
@@ -649,7 +438,7 @@ struct ForkTweaksView: View {
 
 struct ForkLogsView: View {
     @ObservedObject var mgr: laramgr
-    @State private var autoscroll = true
+    @State private var autoscroll      = true
     @State private var showClearConfirm = false
 
     var body: some View {
@@ -674,8 +463,10 @@ struct ForkLogsView: View {
                 Button {
                     withAnimation { autoscroll.toggle() }
                 } label: {
-                    Image(systemName: autoscroll ? "arrow.down.to.line.circle.fill" : "arrow.down.to.line.circle")
-                        .foregroundColor(autoscroll ? .blue : .secondary)
+                    Image(systemName: autoscroll
+                          ? "arrow.down.to.line.circle.fill"
+                          : "arrow.down.to.line.circle")
+                    .foregroundColor(autoscroll ? .blue : .secondary)
                 }
 
                 Button(role: .destructive) {
