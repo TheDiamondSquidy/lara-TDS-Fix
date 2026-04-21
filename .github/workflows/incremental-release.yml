@@ -1,4 +1,4 @@
-name: build
+name: incremental-release-build
 on:
   push:
     branches: [ main ]
