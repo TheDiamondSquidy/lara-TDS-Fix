@@ -11,7 +11,7 @@ struct RemoteView: View {
     @ObservedObject var mgr: laramgr
     @State private var running: Bool = false
     @State private var columns: Int = 5
-    @State private var performanceHUD: Int = 0
+    @State private var performanceHUD: Int = -1
     @AppStorage("rcdockunlimited") private var rcdockunlimited: Bool = false
 
     private var dockMaxColumns: Int { rcdockunlimited ? 50 : 10 }
