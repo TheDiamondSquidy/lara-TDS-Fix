@@ -41,6 +41,7 @@
 import Foundation
 import Combine
 import Darwin
+import SwiftUI
 
 // MARK: - Diagnostics types
 
