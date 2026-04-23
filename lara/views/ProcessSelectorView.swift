@@ -1,6 +1,6 @@
 //
 //  ProcessSelectorView.swift
-//  lara
+//  lara — TDS fork
 //
 //  Single-pane unified process picker.
 //  Filter chips: All · Recommended · Live · Activated · Not Init
@@ -8,6 +8,11 @@
 //
 //  "Isolate" sets the process as the sole RC override for the file manager.
 //  Isolating a process automatically un-isolates every other one (single binding).
+//
+//  Fix log:
+//    • Row layout restructured: buttons moved below the process name to prevent
+//      long names (e.g. mobile_backup_agent2) from being truncated by ellipsis.
+//      Name + tags on top row, buttons + state on bottom row.
 //
 
 import SwiftUI
@@ -96,7 +101,6 @@ struct ProcessSelectorView: View {
         var seen   = Set<String>()
         var result = [UnifiedProcess]()
 
-        // Recommended pool entries first (whether running or not)
         for name in RemoteFileIO.recommendedProcesses {
             seen.insert(name)
             let running = runningProcs.first { $0.name == name }
@@ -110,7 +114,6 @@ struct ProcessSelectorView: View {
             ))
         }
 
-        // Remaining live processes not in recommended list
         for proc in runningProcs where proc.pid > 1 && !seen.contains(proc.name) {
             seen.insert(proc.name)
             result.append(UnifiedProcess(
@@ -231,8 +234,7 @@ struct ProcessSelectorView: View {
                 ) { withAnimation(.easeInOut(duration: 0.15)) { activeSort = sort } }
             }
             Spacer()
-            // Route hint
-            if let path = pathContext {
+            if pathContext != nil {
                 Text("→ \(routedProcess ?? "SpringBoard")")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -303,7 +305,6 @@ struct ProcessSelectorView: View {
                     }
                 } else {
                     List {
-                        // Stats header
                         Section {
                             ForEach(items) { proc in
                                 unifiedRow(proc)
@@ -335,36 +336,44 @@ struct ProcessSelectorView: View {
         }
     }
 
-    // MARK: - Unified row
+    // MARK: - Unified row (two-line layout: name on top, buttons on bottom)
+    //
+    // Previous layout had name + tags + buttons all on one HStack line.
+    // Long process names like "mobile_backup_agent2" plus tags ("★", "routed")
+    // plus two buttons ("Destroy", "✓ Isolated") overflowed the row width on
+    // iPhone screens, causing the name to be truncated by ellipsis.
+    //
+    // New layout:
+    //   Top:    [dot] [R/M] process_name_here  [★] [routed] [isolated]
+    //   Bottom: pid 1234 · ready (pid 1234)         [Init] [Isolate]
 
     @ViewBuilder
     private func unifiedRow(_ proc: UnifiedProcess) -> some View {
-        HStack(spacing: 10) {
-            // State dot
-            Circle()
-                .fill(proc.stateColor)
-                .frame(width: 8, height: 8)
+        VStack(alignment: .leading, spacing: 6) {
+            // ── Top: state dot + privilege badge + process name + tags ──
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(proc.stateColor)
+                    .frame(width: 8, height: 8)
 
-            // Privilege badge
-            Text(proc.isRoot ? "R" : "M")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(proc.isRoot ? .orange : Color(.systemGray))
-                .frame(width: 14)
+                Text(proc.isRoot ? "R" : "M")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(proc.isRoot ? .orange : Color(.systemGray))
+                    .frame(width: 14)
 
-            // Name + meta
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(proc.name)
-                        .font(.system(.body, design: .monospaced))
-                        .fontWeight(proc.name == routedProcess ? .semibold : .regular)
-                        .lineLimit(1)
+                Text(proc.name)
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(proc.name == routedProcess ? .semibold : .regular)
+                    // No lineLimit — name is always fully visible
 
-                    if proc.name == routedProcess    { inlineTag("routed",   .blue) }
-                    if selectedOverride == proc.name { inlineTag("isolated", .orange) }
-                    if proc.isRecommended            { inlineTag("★",        .blue) }
-                    if !proc.isRunning               { inlineTag("offline",  Color(.systemGray2)) }
-                }
+                if proc.name == routedProcess    { inlineTag("routed",   .blue) }
+                if selectedOverride == proc.name { inlineTag("isolated", .orange) }
+                if proc.isRecommended            { inlineTag("★",        .blue) }
+                if !proc.isRunning               { inlineTag("offline",  Color(.systemGray2)) }
+            }
 
+            // ── Bottom: state info on left, action buttons on right ──
+            HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     if let pid = proc.pid {
                         Text("pid \(pid)")
@@ -375,17 +384,16 @@ struct ProcessSelectorView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(proc.stateColor)
                 }
-            }
 
-            Spacer()
+                Spacer()
 
-            // Action buttons column
-            HStack(spacing: 6) {
-                rcActionButton(proc)
-                isolateButton(proc)
+                HStack(spacing: 6) {
+                    rcActionButton(proc)
+                    isolateButton(proc)
+                }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 
@@ -428,9 +436,9 @@ struct ProcessSelectorView: View {
         let isIsolated = selectedOverride == proc.name
         Button(isIsolated ? "✓ Isolated" : "Isolate") {
             if isIsolated {
-                selectedOverride = nil   // clear isolation
+                selectedOverride = nil
             } else {
-                selectedOverride = proc.name   // isolate (dismisses & sets override)
+                selectedOverride = proc.name
                 dismiss()
             }
         }
