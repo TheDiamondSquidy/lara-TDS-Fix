@@ -481,9 +481,9 @@ struct JetsamMultiplier {
             if e.pid == UInt32(pid) {
                 // e.kaddr is the kernel address of the proc struct
                 // proc → proc_ro → task
-                let procRO = mgr.kcread64(e.kaddr + UInt64(off_proc_p_proc_ro))
+                let procRO = mgr.kread64(e.kaddr + UInt64(off_proc_p_proc_ro))
                 guard procRO != 0 else { return nil }
-                let taskAddr = mgr.kcread64(procRO + UInt64(off_proc_ro_pr_task))
+                let taskAddr = mgr.kread64(procRO + UInt64(off_proc_ro_pr_task))
                 return taskAddr != 0 ? taskAddr : nil
             }
         }
