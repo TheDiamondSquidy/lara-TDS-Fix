@@ -434,16 +434,16 @@ struct JetsamMultiplier {
         }
 
         // Read current values
-        let activeOrig   = Int32(bitPattern: mgr.kread32(taskAddr + off_task_memlimit_active))
-        let inactiveOrig = Int32(bitPattern: mgr.kread32(taskAddr + off_task_memlimit_inactive))
+        let activeOrig   = Int32(bitPattern: mgr.kread32(address: taskAddr + off_task_memlimit_active))
+        let inactiveOrig = Int32(bitPattern: mgr.kread32(address: taskAddr + off_task_memlimit_inactive))
 
         // Multiply
         let newActive   = activeOrig > 0 ? activeOrig * multiplier : activeOrig
         let newInactive = inactiveOrig > 0 ? inactiveOrig * multiplier : inactiveOrig
 
         // Write back
-        mgr.kwrite32(taskAddr + off_task_memlimit_active,   value: UInt32(bitPattern: newActive))
-        mgr.kwrite32(taskAddr + off_task_memlimit_inactive, value: UInt32(bitPattern: newInactive))
+        mgr.kwrite32(address: taskAddr + off_task_memlimit_active,   value: UInt32(bitPattern: newActive))
+        mgr.kwrite32(address: taskAddr + off_task_memlimit_inactive, value: UInt32(bitPattern: newInactive))
 
         return MultiplierResult(
             ok: true, approach: "krw",
@@ -481,9 +481,9 @@ struct JetsamMultiplier {
             if e.pid == UInt32(pid) {
                 // e.kaddr is the kernel address of the proc struct
                 // proc → proc_ro → task
-                let procRO = mgr.kread64(e.kaddr + UInt64(off_proc_p_proc_ro))
+                let procRO = mgr.kread64(address: e.kaddr + UInt64(off_proc_p_proc_ro))
                 guard procRO != 0 else { return nil }
-                let taskAddr = mgr.kread64(procRO + UInt64(off_proc_ro_pr_task))
+                let taskAddr = mgr.kread64(address: procRO + UInt64(off_proc_ro_pr_task))
                 return taskAddr != 0 ? taskAddr : nil
             }
         }
