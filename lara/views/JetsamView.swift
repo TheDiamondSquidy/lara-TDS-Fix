@@ -105,16 +105,17 @@ private let MEMORYSTATUS_MEMLIMIT_ATTR_FATAL: UInt32 = 0x1
 // must be initialised in offsets_init().  They are in the same Swift module
 // via the bridging header so we access them directly.
 //
-// Swift naming: prefix with "joff_" to avoid shadowing the C identifier
-// (a computed property named exactly the same as the C global would recurse).
-//
-// If offsets_init() leaves these 0, krwJetsamOffsetsReady is false and the
-// KRW path is skipped — the syscall(440) / RC paths still apply the limit.
-private var joff_task_jetsam_priority:        UInt64 { UInt64(off_task_jetsam_priority) }
-private var joff_task_memlimit_active:        UInt64 { UInt64(off_task_memlimit_active) }
-private var joff_task_memlimit_inactive:      UInt64 { UInt64(off_task_memlimit_inactive) }
-private var joff_task_memlimit_active_attr:   UInt64 { UInt64(off_task_memlimit_active_attr) }
-private var joff_task_memlimit_inactive_attr: UInt64 { UInt64(off_task_memlimit_inactive_attr) }
+// KRW offsets are 0 until you add them to offsets.m / offsets_init().
+// With 0 values krwJetsamOffsetsReady is false and viaKRW() is skipped —
+// the syscall(440) / RC paths handle everything without them.
+// When you're ready to enable KRW, swap these for the real C globals:
+//   private var joff_task_memlimit_active:   UInt64 { UInt64(off_task_memlimit_active) }
+//   private var joff_task_memlimit_inactive: UInt64 { UInt64(off_task_memlimit_inactive) }
+private var joff_task_jetsam_priority:        UInt64 { 0 }
+private var joff_task_memlimit_active:        UInt64 { 0 }
+private var joff_task_memlimit_inactive:      UInt64 { 0 }
+private var joff_task_memlimit_active_attr:   UInt64 { 0 }
+private var joff_task_memlimit_inactive_attr: UInt64 { 0 }
 
 /// Returns true if the KRW jetsam offsets have been configured (non-zero).
 private var krwJetsamOffsetsReady: Bool {
@@ -1244,7 +1245,8 @@ struct JetsamView: View {
         var bandSource = "direct"
 
         if !bandOK {
-            // RC path: call memorystatus_control via syscall(440) inside configd
+            // RC path via syscall(440) — avoids dlsym resolution issues for the
+            // private memorystatus_control symbol while still reaching the kernel.
             let rcio = RemoteFileIO.shared
             let rcCandidates = ["configd", "SpringBoard", "securityd"]
             for rcProc in rcCandidates {
@@ -1252,12 +1254,15 @@ struct JetsamView: View {
                 let trojan = rc.trojanMem
                 guard trojan != 0 else { continue }
 
+                // Build memorystatus_priority_properties_t in trojan memory:
+                //   int32_t  priority  (offset 0, 4 bytes)
+                //   uint64_t user_data (offset 8, 8 bytes — natural alignment pad)
                 var propBuf = [UInt8](repeating: 0, count: 16)
-                withUnsafeBytes(of: band) { propBuf.replaceSubrange(0..<4, with: $0) }
-                propBuf.withUnsafeBytes { rcio.callIn(rc: rc, name: "memorystatus_control",
-                    args: [UInt64(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES),
-                           UInt64(bitPattern: Int64(proc.pid)), 0, trojan, 16]) }
-                // verify success: call again via syscall if dlsym may have missed the symbol
+                withUnsafeBytes(of: band) { src in propBuf.replaceSubrange(0..<4, with: src) }
+                propBuf.withUnsafeBytes { bytes in
+                    rc.remote_write(trojan, from: bytes.baseAddress, size: 16)
+                }
+
                 let sysRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
                     args: [440,
                            UInt64(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES),
