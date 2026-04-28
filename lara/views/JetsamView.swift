@@ -2,1044 +2,356 @@
 //  JetsamView.swift
 //  lara
 //
-//  Jetsam memory manager.
-//  Uses memorystatus_control directly (post-sbx-escape) to raise process
-//  priority bands and set memory limits, preventing OOM kills.
+//  Jetsam memory manager — clean rewrite.
 //
-//  Jetsam Multiplier (Dopamine-style):
-//    Reads each process's current memory limit, multiplies it by a user-chosen
-//    factor (1x–4x), and writes the new limit back.  Four fallback approaches:
-//      1. Direct memorystatus_control from lara's own process
-//      2. RC into configd (root uid, most entitlements)
-//      3. RC into any other ready root-uid process in the pool
-//      4. KRW direct kernel task struct write (bypasses all entitlements)
-//    Includes auto-protect timer that watches for new processes and applies
-//    the multiplier automatically — closest approximation to Dopamine's
-//    systemhook spawn-time behaviour.
+//  Two independent actions per process:
+//
+//  Memory Limit (Direct Ledger Write)
+//    Writes directly to ledger→entries[phys_footprint].le_limit via kwrite64.
+//    This bypasses the system-imposed memorystatus cap entirely.
+//    Requires: exploit (KRW) + one-time scanner run.
+//
+//  Priority Band
+//    Sets the jetsam kill-order band via memorystatus_control.
+//    Tries direct call first; falls back to RC on configd (root).
+//    Requires: exploit. RC recommended for best reliability.
 //
 //  Priority band reference:
-//    0   idle / background         (killed first under pressure)
+//    0   idle / background         (killed first)
 //    4   background suspended
 //    5   audio background
 //    8   mail / daemon
 //   10   foreground app            (default)
 //   12   active assertion
 //   15   SpringBoard
-//   16   critical daemon           (highest safe value)
-//   17+  kernel protected          — never touch
+//   16   critical daemon           (highest safe value; never exceed)
 //
 
 import SwiftUI
 import Darwin
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MARK: - memorystatus_control declarations
-// ═══════════════════════════════════════════════════════════════════════════
+// MARK: - memorystatus_control (internal — accessible throughout this file)
 
 @_silgen_name("memorystatus_control")
-private func memorystatus_control(
-    _ command: Int32,
-    _ pid: Int32,
-    _ flags: UInt32,
-    _ buffer: UnsafeMutableRawPointer?,
+func memorystatus_control(
+    _ command:    Int32,
+    _ pid:        Int32,
+    _ flags:      UInt32,
+    _ buffer:     UnsafeMutableRawPointer?,
     _ buffersize: Int
 ) -> Int32
 
-// ── Commands ──────────────────────────────────────────────────────────────
-// NOTE: SET_PRIORITY_PROPERTIES is 7 in the existing working code.
-//       XNU headers show SET_MEMLIMIT_PROPERTIES also as 7 on some versions.
-//       If the multiplier's GET+SET path fails (because cmd 7 is interpreted
-//       as priority-set on your kernel), the fallback approaches will handle
-//       it — TASK_LIMIT (cmd 6), syscall(396), and KRW all work independently.
-private let MEMORYSTATUS_CMD_GET_PRIORITY_LIST:           Int32 = 1
-private let MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES:     Int32 = 7  // sets jetsam band (priority)
-private let MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK:  Int32 = 5
-private let MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT:       Int32 = 6
-// ⚠️  CRITICAL: cmd 7 = SET_PRIORITY_PROPERTIES; cmd 9 = SET_MEMLIMIT_PROPERTIES.
-//     These are NOT the same. Using 7 for memlimit silently calls the wrong
-//     kernel path (priority update) with a mis-typed buffer → no effect.
-private let MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES:     Int32 = 9  // was wrongly 7
-private let MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES:     Int32 = 8
+let MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES: Int32 = 7
+let MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT:   Int32 = 6
+let MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES: Int32 = 8
+let SYS_MEMORYSTATUS_CONTROL: UInt64 = 396   // iOS 17.x / xnu-10002.81.5
 
-// Bit flag for HWM hard-kill
-private let MEMORYSTATUS_FLAGS_HWM_HARD: UInt32 = 0x4
+// MARK: - ScannerPhase (file-scope — both JetsamView and EditorSheet reference it)
 
-// ── memorystatus_memlimit_properties_t ────────────────────────────────────
-// Layout (16 bytes):
-//   int32_t  memlimit_active        (offset 0)   — jetsam limit (MB) when active
-//   uint32_t memlimit_active_attr   (offset 4)   — attributes bitfield
-//   int32_t  memlimit_inactive      (offset 8)   — jetsam limit (MB) when inactive
-//   uint32_t memlimit_inactive_attr (offset 12)  — attributes bitfield
-private let kMemlimitPropsSize = 16
+enum ScannerPhase: Equatable {
+    case idle
+    case running
+    case ready
+    case failed(String)
 
-// Attribute bit: limit is fatal (process killed, not warned)
-private let MEMORYSTATUS_MEMLIMIT_ATTR_FATAL: UInt32 = 0x1
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MARK: - KRW jetsam offsets
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// ⚠️  These offsets are NOT in offsets.h yet — they need to be added for
-//     your target iOS version.  The values below are PLACEHOLDERS from
-//     XNU source for iOS 16.x on A12+.  Verify against your kernelcache.
-//
-//     To find them:
-//       1. In IDA/Ghidra, find memorystatus_update_priority_for_proc()
-//       2. It writes to task+off_jetsam_priority
-//       3. memorystatus_set_memlimit_properties() writes to
-//          task+off_memlimit_active and task+off_memlimit_inactive
-//       4. Or search for the task struct definition in your XNU source
-//
-//     Once found, add to offsets.h:
-//       extern uint32_t off_task_jetsam_priority;
-//       extern uint32_t off_task_memlimit_active;
-//       extern uint32_t off_task_memlimit_inactive;
-//       extern uint32_t off_task_memlimit_active_attr;
-//       extern uint32_t off_task_memlimit_inactive_attr;
-//
-//     And initialise them in offsets.m alongside the other offset lookups.
-
-// ── Task jetsam offsets — read from C globals set in offsets_init() ──────
-//
-// The C globals are declared in offsets.h (extern uint32_t off_task_*) and
-// must be initialised in offsets_init().  They are in the same Swift module
-// via the bridging header so we access them directly.
-//
-// KRW offsets are 0 until you add them to offsets.m / offsets_init().
-// With 0 values krwJetsamOffsetsReady is false and viaKRW() is skipped —
-// the syscall(396) / RC paths handle everything without them.
-// When you're ready to enable KRW, swap these for the real C globals:
-//   private var joff_task_memlimit_active:   UInt64 { UInt64(off_task_memlimit_active) }
-//   private var joff_task_memlimit_inactive: UInt64 { UInt64(off_task_memlimit_inactive) }
-private var joff_task_jetsam_priority:        UInt64 { 0 }
-private var joff_task_memlimit_active:        UInt64 { 0 }
-private var joff_task_memlimit_inactive:      UInt64 { 0 }
-private var joff_task_memlimit_active_attr:   UInt64 { 0 }
-private var joff_task_memlimit_inactive_attr: UInt64 { 0 }
-
-/// Returns true if the KRW jetsam offsets have been configured (non-zero).
-private var krwJetsamOffsetsReady: Bool {
-    joff_task_memlimit_active != 0 && joff_task_memlimit_inactive != 0
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MARK: - Multiplier result
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Records the outcome of a multiplier application attempt.
-struct MultiplierResult {
-    let ok: Bool
-    let approach: String          // "direct" / "rc:configd" / "rc:SpringBoard" / "krw" / etc.
-    let prevActive: Int32         // original memlimit_active (MB)
-    let prevInactive: Int32       // original memlimit_inactive (MB)
-    let newActive: Int32          // multiplied memlimit_active (MB)
-    let newInactive: Int32        // multiplied memlimit_inactive (MB)
-    let detail: String
-
-    var summary: String {
-        guard ok else { return "✗ \(detail)" }
-        return "✓ \(prevActive)→\(newActive) MB active, \(prevInactive)→\(newInactive) MB inactive [\(approach)]"
+    var label: String {
+        switch self {
+        case .idle:          return "Not scanned"
+        case .running:       return "Scanning…"
+        case .ready:         return "Ready"
+        case .failed(let r): return "Failed: \(r)"
+        }
     }
 
-    static func failure(_ detail: String) -> MultiplierResult {
-        MultiplierResult(ok: false, approach: "none", prevActive: 0, prevInactive: 0,
-                         newActive: 0, newInactive: 0, detail: detail)
+    var color: Color {
+        switch self {
+        case .idle:    return .secondary
+        case .running: return .orange
+        case .ready:   return .green
+        case .failed:  return .red
+        }
+    }
+
+    var isReady: Bool {
+        if case .ready = self { return true }
+        return LedgerScanner.cached != nil
     }
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MARK: - JetsamMultiplier engine
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// Static methods that implement the four fallback approaches.
-// Each takes a pid and multiplier and returns a MultiplierResult.
-// The main entry point `applyMultiplier` tries them in order.
-
-struct JetsamMultiplier {
-
-    // ── Main entry point ──────────────────────────────────────────────────
-
-    /// Apply the jetsam multiplier to a single process, trying all approaches
-    /// in fallback order until one succeeds.
-    static func applyMultiplier(pid: Int32, multiplier: Int32, mgr: laramgr? = nil) -> MultiplierResult {
-        // ── Approach 0: task_set_phys_footprint_limit via RC ─────────────
-        // This is the only approach that raises the VM ledger hard cap —
-        // the mechanism that actually kills memory-heavy apps at a consistent
-        // threshold (e.g. MelonX at 2.15 GB).  memorystatus_control alone
-        // only adjusts the jetsam watchdog, which fires at variable thresholds
-        // under pressure and never exceeds the ledger cap anyway.
-        //
-        // We RC into configd (root uid) to call:
-        //   task_for_pid(mach_task_self(), target_pid, &task_port)
-        //   task_set_phys_footprint_limit(task_port, new_limit_mb, nil)
-        //
-        // As a simpler fallback we also try MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT
-        // (cmd 6) via syscall — that internally calls task_set_phys_footprint_limit
-        // for the target, hitting both ledger and jetsam in one kernel call.
-        let r0 = viaFootprintLimit(pid: pid, multiplier: multiplier)
-        if r0.ok { return r0 }
-
-        // Approach 1: direct memorystatus_control from lara's process
-        let r1 = viaDirectMemstatus(pid: pid, multiplier: multiplier)
-        if r1.ok { return r1 }
-
-        // Approach 2: RC into configd (root uid, best entitlements)
-        let r2 = viaRC(pid: pid, multiplier: multiplier, targetProcess: "configd")
-        if r2.ok { return r2 }
-
-        // Approach 3: RC into any other ready root-uid process
-        let rootProcs = ["SpringBoard", "securityd", "mediaserverd",
-                         RemoteFileIO.backupDaemonName]
-        for proc in rootProcs {
-            let r3 = viaRC(pid: pid, multiplier: multiplier, targetProcess: proc)
-            if r3.ok { return r3 }
-        }
-
-        // Approach 4: RC using syscall() — call memorystatus_control by syscall number
-        let r4 = viaSyscallRC(pid: pid, multiplier: multiplier)
-        if r4.ok { return r4 }
-
-        // Approach 5: Direct KRW kernel write (requires offsets)
-        let r5 = viaKRW(pid: pid, multiplier: multiplier)
-        if r5.ok { return r5 }
-
-        return .failure("all approaches failed for pid \(pid)")
-    }
-
-    // ── Absolute limit setter ─────────────────────────────────────────────
-    //
-    // Sets the memory limit to a specific MB value rather than multiplying
-    // the current limit.  Useful when GET returns 0 or a wrong value.
-    // Uses the same footprint path (cmd 6 + task_set_phys_footprint_limit).
-
-    static func applyAbsolute(pid: Int32, targetMB: Int32) -> MultiplierResult {
-        let capped = min(targetMB, kFootprintCapMB)
-
-        // Try footprint approach directly with the absolute target
-        let rcio = RemoteFileIO.shared
-        for procName in ["configd", "SpringBoard", "securityd"] {
-            guard let rc = rcio.rcProc(for: procName) else { continue }
-            let trojan = rc.trojanMem
-            guard trojan != 0 else { continue }
-
-            // cmd 6 SET_JETSAM_TASK_LIMIT — flags = limit MB.
-            // SYS_memorystatus_control = 396.
-            let ret = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                args: [396,
-                       UInt64(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT),
-                       UInt64(bitPattern: Int64(pid)),
-                       UInt64(capped),
-                       0, 0]) & 0xFFFFFFFF))
-
-            if ret == 0 {
-                return MultiplierResult(
-                    ok: true,
-                    approach: "absolute:cmd6:\(procName)",
-                    prevActive: 0, prevInactive: 0,
-                    newActive: capped, newInactive: capped,
-                    detail: "SET_JETSAM_TASK_LIMIT → \(capped) MB via \(procName)"
-                )
-            }
-
-            // Also try cmd 9 SET_MEMLIMIT_PROPERTIES with absolute values
-            var props = buildMemlimitProps(active: capped, activeAttr: 0,
-                                           inactive: capped, inactiveAttr: 0)
-            props.withUnsafeBytes { bytes in
-                rc.remote_write(trojan, from: bytes.baseAddress, size: UInt64(kMemlimitPropsSize))
-            }
-            let ret9 = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                args: [396,
-                       UInt64(MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES),
-                       UInt64(bitPattern: Int64(pid)),
-                       0, trojan,
-                       UInt64(kMemlimitPropsSize)]) & 0xFFFFFFFF))
-
-            if ret9 == 0 {
-                return MultiplierResult(
-                    ok: true,
-                    approach: "absolute:cmd9:\(procName)",
-                    prevActive: 0, prevInactive: 0,
-                    newActive: capped, newInactive: capped,
-                    detail: "SET_MEMLIMIT_PROPERTIES → \(capped) MB via \(procName)"
-                )
-            }
-        }
-
-        return .failure("absolute setter failed for pid \(pid) targetMB=\(capped)")
-    }
-
-    // ── Approach 0: task_set_phys_footprint_limit via RC ─────────────────
-    //
-    // This is the only approach that raises the VM ledger hard cap.
-    //
-    // Strategy A: task_for_pid → task_set_phys_footprint_limit
-    //   RC into configd (uid 0, has task_for_pid entitlement).
-    //   Call task_for_pid(mach_task_self(), target_pid, buf) to get the target
-    //   task port into remote memory, then call task_set_phys_footprint_limit
-    //   on that port with the desired limit.
-    //
-    // Strategy B: MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT (cmd 6) via syscall
-    //   Simpler — cmd 6 internally calls task_set_phys_footprint_limit_internal
-    //   for the target pid, hitting both the ledger cap and the jetsam memlimit
-    //   in a single kernel call.  Requires com.apple.private.memorystatus on the
-    //   calling process; configd has it.
-    //
-    // The new limit is: currentLimit * multiplier, capped at kFootprintCapMB.
-    // We read the current limit via task_get_phys_footprint_limit before writing.
-
-    // Hard ceiling — don't set footprint limits above this regardless of multiplier.
-    // iPhone 13 has 4 GB physical RAM; leave ~1 GB headroom for kernel + other procs.
-    private static let kFootprintCapMB: Int32 = 3072   // 3 GB
-
-    private static func viaFootprintLimit(pid: Int32, multiplier: Int32) -> MultiplierResult {
-        let rcio = RemoteFileIO.shared
-        let candidates = ["configd", "SpringBoard", "securityd"]
-
-        for procName in candidates {
-            guard let rc = rcio.rcProc(for: procName) else { continue }
-            let trojan = rc.trojanMem
-            guard trojan != 0 else { continue }
-
-            // ── Strategy A: task_for_pid → task_set_phys_footprint_limit ──────
-
-            // task_for_pid(mach_task_self_(), target_pid, &task_port_out)
-            // Writes the mach_port_t (4 bytes) into trojan+0.
-            var zero32: UInt32 = 0
-            rc.remote_write(trojan, from: &zero32, size: UInt64(4))
-
-            let tfpRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc,
-                name: "task_for_pid",
-                args: [
-                    rcio.callIn(rc: rc, name: "mach_task_self_", args: []), // task_t self
-                    UInt64(bitPattern: Int64(pid)),                          // target pid
-                    trojan                                                   // mach_port_t *
-                ]) & 0xFFFFFFFF))
-
-            if tfpRet == 0 /* KERN_SUCCESS */ {
-                // Read back the port name (4-byte mach_port_t)
-                var portVal: UInt32 = 0
-                _ = rc.remoteRead(trojan, to: &portVal, size: UInt64(4))
-
-                if portVal != 0 {
-                    // Read current limit via task_get_phys_footprint_limit
-                    // int task_get_phys_footprint_limit(task_t task, int *limit_mb)
-                    // Store result at trojan+8
-                    var curLimitSlot: Int32 = 0
-                    rc.remote_write(trojan + 8, from: &curLimitSlot, size: UInt64(4))
-                    _ = rcio.callIn(rc: rc, name: "task_get_phys_footprint_limit",
-                                    args: [UInt64(portVal), trojan + 8])
-
-                    var curLimit: Int32 = 0
-                    _ = rc.remoteRead(trojan + 8, to: &curLimit, size: UInt64(4))
-
-                    // If current limit is 0 or negative, fall back to a sensible default
-                    let baseLimit: Int32 = curLimit > 0 ? curLimit : 1500
-                    var newLimit = baseLimit * multiplier
-                    if newLimit > kFootprintCapMB { newLimit = kFootprintCapMB }
-
-                    // task_set_phys_footprint_limit(task_port, new_limit_mb, nil)
-                    // Returns kern_return_t (0 = success)
-                    let setRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc,
-                        name: "task_set_phys_footprint_limit",
-                        args: [UInt64(portVal), UInt64(bitPattern: Int64(newLimit)), 0]
-                        ) & 0xFFFFFFFF))
-
-                    if setRet == 0 {
-                        return MultiplierResult(
-                            ok: true,
-                            approach: "footprint:tfp:\(procName)",
-                            prevActive: baseLimit, prevInactive: baseLimit,
-                            newActive:  newLimit,  newInactive: newLimit,
-                            detail: "task_set_phys_footprint_limit \(baseLimit)→\(newLimit) MB via \(procName)"
-                        )
-                    }
-                }
-            }
-
-            // ── Strategy B: MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT (cmd 6) ──
-            // cmd 6 takes limit in MB as the flags parameter — no buffer needed.
-            // It internally calls task_set_phys_footprint_limit_internal, so it
-            // raises the ledger cap AND the jetsam limit in one call.
-            //
-            // Read current limit first so we can multiply it.
-            var curBuf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-            curBuf.withUnsafeBytes { bytes in
-                rc.remote_write(trojan, from: bytes.baseAddress, size: UInt64(kMemlimitPropsSize))
-            }
-
-            let getRetB = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                args: [396,
-                       UInt64(MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES),
-                       UInt64(bitPattern: Int64(pid)),
-                       0, trojan, UInt64(kMemlimitPropsSize)]) & 0xFFFFFFFF))
-
-            var baseActive: Int32 = 1500
-            if getRetB == 0 {
-                var readBuf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-                if readBuf.withUnsafeMutableBytes({ rc.remoteRead(trojan, to: $0.baseAddress, size: UInt64(kMemlimitPropsSize)) }) {
-                    let (a, _, _, _) = parseMemlimitProps(readBuf)
-                    if a > 0 { baseActive = a }
-                }
-            }
-
-            var newLimitB = baseActive * multiplier
-            if newLimitB > kFootprintCapMB { newLimitB = kFootprintCapMB }
-
-            let setRetB = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                args: [396,
-                       UInt64(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT),
-                       UInt64(bitPattern: Int64(pid)),
-                       UInt64(newLimitB),
-                       0, 0]) & 0xFFFFFFFF))
-
-            if setRetB == 0 {
-                return MultiplierResult(
-                    ok: true,
-                    approach: "footprint:cmd6:\(procName)",
-                    prevActive: baseActive, prevInactive: baseActive,
-                    newActive:  newLimitB,  newInactive: newLimitB,
-                    detail: "MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT \(baseActive)→\(newLimitB) MB via \(procName)"
-                )
-            }
-        }
-
-        return .failure("footprint limit: all RC candidates failed for pid \(pid)")
-    }
-
-    // ── Approach 1: Direct memorystatus_control ───────────────────────────
-
-    /// Reads current limits with GET_MEMLIMIT_PROPERTIES (cmd 8),
-    /// multiplies them, writes back with SET_MEMLIMIT_PROPERTIES (cmd 7).
-    /// Works if lara has the com.apple.private.memorystatus entitlement
-    /// (often available post-sandbox-escape).
-    private static func viaDirectMemstatus(pid: Int32, multiplier: Int32) -> MultiplierResult {
-        // Step 1: Read current limits
-        var buf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-        let getRet = buf.withUnsafeMutableBytes { ptr in
-            memorystatus_control(
-                MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES,
-                pid,
-                0,
-                ptr.baseAddress,
-                kMemlimitPropsSize
-            )
-        }
-
-        guard getRet == 0 else {
-            return .failure("direct GET_MEMLIMIT ret=\(getRet) errno=\(errno)")
-        }
-
-        let (activeOrig, activeAttr, inactiveOrig, inactiveAttr) = parseMemlimitProps(buf)
-
-        // Step 2: Multiply (skip negative/unlimited values)
-        let newActive   = activeOrig > 0 ? activeOrig * multiplier : activeOrig
-        let newInactive = inactiveOrig > 0 ? inactiveOrig * multiplier : inactiveOrig
-
-        // Step 3: Write back
-        var outBuf = buildMemlimitProps(active: newActive, activeAttr: activeAttr,
-                                        inactive: newInactive, inactiveAttr: inactiveAttr)
-        let setRet = outBuf.withUnsafeMutableBytes { ptr in
-            memorystatus_control(
-                MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES,
-                pid,
-                0,
-                ptr.baseAddress,
-                kMemlimitPropsSize
-            )
-        }
-
-        guard setRet == 0 else {
-            return .failure("direct SET_MEMLIMIT ret=\(setRet) errno=\(errno)")
-        }
-
-        return MultiplierResult(
-            ok: true, approach: "direct",
-            prevActive: activeOrig, prevInactive: inactiveOrig,
-            newActive: newActive, newInactive: newInactive,
-            detail: "memorystatus_control direct"
-        )
-    }
-
-    // ── Approach 2/3: RC into a privileged process ────────────────────────
-
-    /// Same memorystatus_control calls but executed inside a hijacked process
-    /// via RemoteCall.  The target process (configd, SpringBoard, etc.) runs
-    /// with stronger entitlements than lara.
-    private static func viaRC(pid: Int32, multiplier: Int32, targetProcess: String) -> MultiplierResult {
-        let rcio = RemoteFileIO.shared
-        guard let rc = rcio.rcProc(for: targetProcess) else {
-            return .failure("rc:\(targetProcess) not ready")
-        }
-
-        let trojan = rc.trojanMem
-        guard trojan != 0 else {
-            return .failure("rc:\(targetProcess) trojanMem is 0")
-        }
-
-        // Step 1: GET_MEMLIMIT_PROPERTIES via RC
-        // Zero out buffer region in remote memory
-        var zeroBuf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-        zeroBuf.withUnsafeBytes {
-            rc.remote_write(trojan, from: $0.baseAddress, size: UInt64(kMemlimitPropsSize))
-        }
-
-        let getRet = rcio.callIn(rc: rc, name: "memorystatus_control", args: [
-            UInt64(MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES),
-            UInt64(bitPattern: Int64(pid)),
-            0,
-            trojan,
-            UInt64(kMemlimitPropsSize)
-        ])
-
-        let getRetI32 = Int32(bitPattern: UInt32(getRet & 0xFFFFFFFF))
-        guard getRetI32 == 0 else {
-            return .failure("rc:\(targetProcess) GET_MEMLIMIT ret=\(getRetI32)")
-        }
-
-        // Read back the struct from remote memory
-        var buf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-        let readOK = buf.withUnsafeMutableBytes { ptr in
-            rc.remoteRead(trojan, to: ptr.baseAddress, size: UInt64(kMemlimitPropsSize))
-        }
-        guard readOK else {
-            return .failure("rc:\(targetProcess) remote_read failed")
-        }
-
-        let (activeOrig, activeAttr, inactiveOrig, inactiveAttr) = parseMemlimitProps(buf)
-
-        // Step 2: Multiply
-        let newActive   = activeOrig > 0 ? activeOrig * multiplier : activeOrig
-        let newInactive = inactiveOrig > 0 ? inactiveOrig * multiplier : inactiveOrig
-
-        // Step 3: SET_MEMLIMIT_PROPERTIES via RC
-        var outBuf = buildMemlimitProps(active: newActive, activeAttr: activeAttr,
-                                        inactive: newInactive, inactiveAttr: inactiveAttr)
-        outBuf.withUnsafeBytes {
-            rc.remote_write(trojan, from: $0.baseAddress, size: UInt64(kMemlimitPropsSize))
-        }
-
-        let setRet = rcio.callIn(rc: rc, name: "memorystatus_control", args: [
-            UInt64(MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES),
-            UInt64(bitPattern: Int64(pid)),
-            0,
-            trojan,
-            UInt64(kMemlimitPropsSize)
-        ])
-
-        let setRetI32 = Int32(bitPattern: UInt32(setRet & 0xFFFFFFFF))
-        guard setRetI32 == 0 else {
-            // Fallback: try SET_JETSAM_TASK_LIMIT (cmd 6) — simpler, sets both limits
-            // to the same value (fatal).  Less flexible but more widely supported.
-            let fallbackLimit = UInt32(newActive > 0 ? newActive : 2048)
-            let taskLimitRet = rcio.callIn(rc: rc, name: "memorystatus_control", args: [
-                UInt64(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT),
-                UInt64(bitPattern: Int64(pid)),
-                UInt64(fallbackLimit),
-                0,
-                0
-            ])
-            let tlRetI32 = Int32(bitPattern: UInt32(taskLimitRet & 0xFFFFFFFF))
-            if tlRetI32 == 0 {
-                return MultiplierResult(
-                    ok: true, approach: "rc:\(targetProcess) (TASK_LIMIT fallback)",
-                    prevActive: activeOrig, prevInactive: inactiveOrig,
-                    newActive: Int32(fallbackLimit), newInactive: Int32(fallbackLimit),
-                    detail: "SET_MEMLIMIT failed; TASK_LIMIT succeeded"
-                )
-            }
-            return .failure("rc:\(targetProcess) SET_MEMLIMIT ret=\(setRetI32), TASK_LIMIT ret=\(tlRetI32)")
-        }
-
-        return MultiplierResult(
-            ok: true, approach: "rc:\(targetProcess)",
-            prevActive: activeOrig, prevInactive: inactiveOrig,
-            newActive: newActive, newInactive: newInactive,
-            detail: "memorystatus_control via \(targetProcess)"
-        )
-    }
-
-    // ── Approach 4: RC syscall() ──────────────────────────────────────────
-    //
-    // On iOS, memorystatus_control is syscall #440.
-    // Calling syscall(440, cmd, pid, flags, buf, bufsize) from any hijacked
-    // process bypasses the C wrapper and can work even if the function symbol
-    // isn't resolved.  This is useful if dlsym can't find "memorystatus_control"
-    // in the remote process but syscall() is always available.
-
-    private static func viaSyscallRC(pid: Int32, multiplier: Int32) -> MultiplierResult {
-        let rcio = RemoteFileIO.shared
-        // Try configd first, then any ready root process
-        let candidates = ["configd", "SpringBoard", "securityd"]
-        for proc in candidates {
-            guard let rc = rcio.rcProc(for: proc) else { continue }
-            let trojan = rc.trojanMem
-            guard trojan != 0 else { continue }
-
-            // Zero out remote buffer
-            var zeroBuf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-            zeroBuf.withUnsafeBytes {
-                rc.remote_write(trojan, from: $0.baseAddress, size: UInt64(kMemlimitPropsSize))
-            }
-
-            // GET via syscall(440, 8, pid, 0, buf, 16)
-            let getRet = rcio.callIn(rc: rc, name: "syscall", args: [
-                396,                                      // SYS_memorystatus_control
-                UInt64(MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES),
-                UInt64(bitPattern: Int64(pid)),
-                0,
-                trojan,
-                UInt64(kMemlimitPropsSize)
-            ])
-
-            let getRetI32 = Int32(bitPattern: UInt32(getRet & 0xFFFFFFFF))
-            guard getRetI32 == 0 else { continue }
-
-            var buf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-            let readOK = buf.withUnsafeMutableBytes { ptr in
-                rc.remoteRead(trojan, to: ptr.baseAddress, size: UInt64(kMemlimitPropsSize))
-            }
-            guard readOK else { continue }
-
-            let (activeOrig, activeAttr, inactiveOrig, inactiveAttr) = parseMemlimitProps(buf)
-
-            let newActive   = activeOrig > 0 ? activeOrig * multiplier : activeOrig
-            let newInactive = inactiveOrig > 0 ? inactiveOrig * multiplier : inactiveOrig
-
-            // SET via syscall(440, 7, pid, 0, buf, 16)
-            var outBuf = buildMemlimitProps(active: newActive, activeAttr: activeAttr,
-                                            inactive: newInactive, inactiveAttr: inactiveAttr)
-            outBuf.withUnsafeBytes {
-                rc.remote_write(trojan, from: $0.baseAddress, size: UInt64(kMemlimitPropsSize))
-            }
-
-            let setRet = rcio.callIn(rc: rc, name: "syscall", args: [
-                396,   // SYS_memorystatus_control
-                UInt64(MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES),
-                UInt64(bitPattern: Int64(pid)),
-                0,
-                trojan,
-                UInt64(kMemlimitPropsSize)
-            ])
-
-            let setRetI32 = Int32(bitPattern: UInt32(setRet & 0xFFFFFFFF))
-            if setRetI32 == 0 {
-                return MultiplierResult(
-                    ok: true, approach: "syscall-rc:\(proc)",
-                    prevActive: activeOrig, prevInactive: inactiveOrig,
-                    newActive: newActive, newInactive: newInactive,
-                    detail: "syscall(396) via \(proc)"
-                )
-            }
-        }
-
-        return .failure("syscall approach failed on all candidates")
-    }
-
-    // ── Approach 5: KRW direct kernel write ───────────────────────────────
-    //
-    // Reads memlimit_active and memlimit_inactive from the kernel task struct
-    // via darksword, multiplies, writes back.  Bypasses all entitlement checks.
-    //
-    // ⚠️  Requires jetsam offsets to be set in offsets.h — see the comment
-    //     block at the top of this file.  If offsets are 0x0, this path is
-    //     skipped entirely.
-
-    private static func viaKRW(pid: Int32, multiplier: Int32) -> MultiplierResult {
-        guard krwJetsamOffsetsReady else {
-            return .failure("KRW jetsam offsets not configured (all 0x0)")
-        }
-
-        let mgr = laramgr.shared
-        guard mgr.dsready else {
-            return .failure("darksword not ready")
-        }
-
-        // Resolve proc → proc_ro → task address
-        guard let taskAddr = resolveTaskAddr(forPid: pid) else {
-            return .failure("could not resolve task addr for pid \(pid)")
-        }
-
-        // Read current values
-        let activeOrig   = Int32(bitPattern: mgr.kread32(address: taskAddr + joff_task_memlimit_active))
-        let inactiveOrig = Int32(bitPattern: mgr.kread32(address: taskAddr + joff_task_memlimit_inactive))
-
-        // Multiply
-        let newActive   = activeOrig > 0 ? activeOrig * multiplier : activeOrig
-        let newInactive = inactiveOrig > 0 ? inactiveOrig * multiplier : inactiveOrig
-
-        // Write back
-        mgr.kwrite32(address: taskAddr + joff_task_memlimit_active,   value: UInt32(bitPattern: newActive))
-        mgr.kwrite32(address: taskAddr + joff_task_memlimit_inactive, value: UInt32(bitPattern: newInactive))
-
-        return MultiplierResult(
-            ok: true, approach: "krw",
-            prevActive: activeOrig, prevInactive: inactiveOrig,
-            newActive: newActive, newInactive: newInactive,
-            detail: "direct kernel write to task+0x\(String(format: "%x", joff_task_memlimit_active))"
-        )
-    }
-
-    // ── KRW helpers ───────────────────────────────────────────────────────
-
-    /// Walk the kernel allproc list to find the task address for a given pid.
-    /// Uses the existing proc offsets from offsets.h (off_proc_p_pid,
-    /// off_proc_p_list_le_next, off_proc_p_proc_ro, off_proc_ro_pr_task).
-    ///
-    /// Fallback: if laramgr exposes a taskAddr(forPid:) helper, use that.
-    private static func resolveTaskAddr(forPid pid: Int32) -> UInt64? {
-        let mgr = laramgr.shared
-
-        // Try laramgr.taskAddr(forPid:) first — it may already exist
-        // (uncomment if your laramgr has this method)
-        // if let addr = mgr.taskAddr(forPid: pid) { return addr }
-
-        // Walk allproc linked list using known offsets
-        // Start from the root vnode's process or the first proc in the list
-        var count: Int32 = 0
-        guard let ptr = proclist(nil, &count), count > 0 else { return nil }
-        defer { free_proclist(ptr) }
-
-        // proclist gives us pid and kernel addr — find matching pid
-        // The proc_entry struct from utils.h includes a kaddr field
-        // If your proc_entry doesn't have kaddr, use the allproc walk below instead
-        for i in 0..<Int(count) {
-            let e = ptr[i]
-            if e.pid == UInt32(pid) {
-                // e.kaddr is the kernel address of the proc struct
-                // proc → proc_ro → task
-                let procRO = mgr.kread64(address: e.kaddr + UInt64(off_proc_p_proc_ro))
-                guard procRO != 0 else { return nil }
-                let taskAddr = mgr.kread64(address: procRO + UInt64(off_proc_ro_pr_task))
-                return taskAddr != 0 ? taskAddr : nil
-            }
-        }
-
-        return nil
-    }
-
-    // ── Buffer parsing helpers ────────────────────────────────────────────
-
-    private static func parseMemlimitProps(_ buf: [UInt8]) -> (Int32, UInt32, Int32, UInt32) {
-        buf.withUnsafeBytes { raw in
-            let active     = raw.load(fromByteOffset: 0,  as: Int32.self)
-            let activeAttr = raw.load(fromByteOffset: 4,  as: UInt32.self)
-            let inactive   = raw.load(fromByteOffset: 8,  as: Int32.self)
-            let inactAttr  = raw.load(fromByteOffset: 12, as: UInt32.self)
-            return (active, activeAttr, inactive, inactAttr)
-        }
-    }
-
-    static func buildMemlimitProps(active: Int32, activeAttr: UInt32,
-                                    inactive: Int32, inactiveAttr: UInt32) -> [UInt8] {
-        var buf = [UInt8](repeating: 0, count: kMemlimitPropsSize)
-        withUnsafeBytes(of: active)       { buf.replaceSubrange(0..<4,   with: $0) }
-        withUnsafeBytes(of: activeAttr)   { buf.replaceSubrange(4..<8,   with: $0) }
-        withUnsafeBytes(of: inactive)     { buf.replaceSubrange(8..<12,  with: $0) }
-        withUnsafeBytes(of: inactiveAttr) { buf.replaceSubrange(12..<16, with: $0) }
-        return buf
-    }
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MARK: - Data model
-// ═══════════════════════════════════════════════════════════════════════════
+// MARK: - JetsamProcess
 
 struct JetsamProcess: Identifiable {
-    let id      = UUID()
-    let pid:    UInt32
-    let uid:    UInt32
-    let name:   String
-    var targetBand:       Int  = 12
-    var limitMB:          Int  = -1      // -1 = unlimited (manual override)
-    var terminateOnLimit: Bool = false   // true → hard kill at limit; false → soft warning
-    var isProtected: Bool = false
-    var origBand:    Int  = 10           // recorded before modification for restore
+    let id   = UUID()
+    let pid:  UInt32
+    let uid:  UInt32
+    let name: String
 
-    // Multiplier state
-    var multiplier:       Int  = 0      // 0 = not applied; 2/3/4 = active multiplier
-    var origActiveMB:     Int  = 0      // original memlimit_active before multiplier
-    var origInactiveMB:   Int  = 0      // original memlimit_inactive before multiplier
-    var multiplierApproach: String = "" // which approach succeeded
+    var origBand:    Int  = 10
+    var targetBand:  Int  = 10
+    var bandApplied: Bool = false
+
+    var ledgerLimitMB: Int? = nil  // nil = not modified via KRW
+
+    var isModified: Bool { bandApplied || ledgerLimitMB != nil }
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
 // MARK: - JetsamView
-// ═══════════════════════════════════════════════════════════════════════════
 
 struct JetsamView: View {
+
     @ObservedObject private var mgr = laramgr.shared
 
-    @State private var processes:     [JetsamProcess] = []
-    @State private var loading        = false
-    @State private var searchText     = ""
-
-    // Status alert
-    @State private var statusMessage:  String = ""
-    @State private var showStatus      = false
-
-    // Editor sheet — capture full process struct at tap time so the sheet
-    // always opens with correct data regardless of async refresh state.
+    @State private var processes:      [JetsamProcess] = []
+    @State private var loading         = false
+    @State private var searchText      = ""
     @State private var editingProcess: JetsamProcess?
-    @State private var showEditor      = false
-    @State private var applying        = false   // true while apply(pid:) is in flight
+    @State private var toast           = ""
+    @State private var showToast       = false
+    @State private var scannerPhase    = ScannerPhase.idle
+    @State private var scannerLog      = ""
 
-    // Confirm restore-all
-    @State private var showRestoreAll = false
+    // MARK: Derived
 
-    // Global multiplier
-    @State private var globalMultiplier: Int = 3
-    @State private var showGlobalConfirm = false
-    @State private var applyingGlobal    = false
-
-    // Auto-protect timer
-    @State private var autoProtectEnabled = false
-    @State private var autoProtectTimer:  Timer?
-    @State private var autoProtectMultiplier: Int = 3
-    @State private var autoProtectCount: Int = 0    // how many processes auto-protected
-
-    private var protectedProcesses: [JetsamProcess] {
-        processes.filter { $0.isProtected || $0.multiplier > 0 }
+    private var modifiedProcesses: [JetsamProcess] {
+        processes.filter(\.isModified)
     }
 
-    private var filteredProcesses: [JetsamProcess] {
-        let base = processes.filter { !$0.isProtected && $0.multiplier == 0 }
+    private var unmodifiedProcesses: [JetsamProcess] {
+        let base = processes.filter { !$0.isModified }
         guard !searchText.isEmpty else { return base }
         return base.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
-    // MARK: - Body
+    private var rcAvailable: Bool {
+        RemoteFileIO.shared.pool.values.contains { $0.state.isReady }
+    }
+
+    // MARK: Body
 
     var body: some View {
         List {
-            // Global multiplier controls
-            globalMultiplierSection
-
-            if !protectedProcesses.isEmpty {
-                protectedSection
-            }
-            runningSection
+            scannerSection
+            if !modifiedProcesses.isEmpty { modifiedSection }
+            processListSection
         }
         .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Filter processes")
-        .navigationTitle("Jetsam")
+        .navigationTitle("Jetsam Manager")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if !protectedProcesses.isEmpty {
-                    Button("Restore All") { showRestoreAll = true }
-                        .foregroundColor(.orange)
-                }
-                Button {
-                    refresh()
-                } label: {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { refresh() } label: {
                     if loading { ProgressView().scaleEffect(0.8) }
-                    else { Image(systemName: "arrow.clockwise") }
+                    else       { Image(systemName: "arrow.clockwise") }
                 }
+                .disabled(loading)
             }
         }
-        .alert("Jetsam Result", isPresented: $showStatus) {
-            Button("OK") { showStatus = false }
+        .alert("Result", isPresented: $showToast) {
+            Button("OK") { showToast = false }
         } message: {
-            Text(statusMessage)
+            Text(toast)
         }
-        .alert("Restore all Jetsam changes?", isPresented: $showRestoreAll) {
-            Button("Restore", role: .destructive) { restoreAll() }
-            Button("Cancel", role: .cancel) {}
-        }
-        .alert("Apply \(globalMultiplier)x to all \(processes.count) processes?",
-               isPresented: $showGlobalConfirm) {
-            Button("Apply", role: .destructive) { applyGlobalMultiplier() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will read each process's current jetsam memory limit and multiply it by \(globalMultiplier). Tries 5 approaches in fallback order.")
-        }
-        .sheet(isPresented: $showEditor) {
-            // editingProcess is captured at tap time — always valid on open.
-            // Changes made inside EditorSheet write back via the binding, then
-            // onApply/onMultiply propagate them to the main processes array.
-            if var ep = editingProcess {
-                EditorSheet(
-                    process: Binding(
-                        get: { editingProcess ?? ep },
-                        set: { editingProcess = $0; ep = $0 }
-                    ),
-                    applying: $applying,
-                    onApply: { updated in
-                        // Merge updated fields back into processes array
-                        if let idx = processes.firstIndex(where: { $0.pid == updated.pid }) {
-                            processes[idx].targetBand       = updated.targetBand
-                            processes[idx].limitMB          = updated.limitMB
-                            processes[idx].terminateOnLimit = updated.terminateOnLimit
-                        }
-                        applyAsync(pid: updated.pid)
-                    },
-                    onMultiply: { mult in
-                        applyMultiplierToProcess(pid: ep.pid, multiplier: mult)
+        // .sheet(item:) — captures the process at tap time.
+        // The sheet ALWAYS opens with valid data on first tap.
+        .sheet(item: $editingProcess) { proc in
+            EditorSheet(
+                process:      proc,
+                scannerPhase: scannerPhase,
+                onLimitApplied: { limitMB in
+                    updateProcess(pid: proc.pid) { $0.ledgerLimitMB = limitMB }
+                },
+                onBandApplied: { band in
+                    updateProcess(pid: proc.pid) {
+                        if !proc.bandApplied { $0.origBand = proc.origBand }
+                        $0.targetBand  = band
+                        $0.bandApplied = true
                     }
-                )
+                },
+                onResult: { msg in
+                    toast     = msg
+                    showToast = true
+                }
+            )
+        }
+        .onAppear {
+            refresh()
+            if LedgerScanner.cached != nil, case .idle = scannerPhase {
+                scannerPhase = .ready
             }
         }
-        .onAppear { refresh() }
-        .onDisappear { stopAutoProtect() }
     }
 
-    // MARK: - Global multiplier section
+    // MARK: Scanner section
 
-    private var globalMultiplierSection: some View {
+    @ViewBuilder
+    private var scannerSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: "bolt.shield")
-                        .foregroundColor(.purple)
-                    Text("Jetsam Multiplier")
-                        .font(.system(.body, design: .monospaced))
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Text("Dopamine-style")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 12) {
 
-                // Multiplier picker
                 HStack(spacing: 8) {
-                    ForEach([2, 3, 4], id: \.self) { mult in
-                        Button("\(mult)x") {
-                            globalMultiplier = mult
-                        }
-                        .font(.system(.body, design: .monospaced).bold())
-                        .buttonStyle(.bordered)
-                        .tint(globalMultiplier == mult ? .purple : .secondary)
-                        .controlSize(.regular)
-                    }
-
+                    Image(systemName: "memorychip")
+                        .foregroundColor(.purple)
+                    Text("Physical Footprint Scanner")
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
                     Spacer()
-
-                    Button {
-                        showGlobalConfirm = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            if applyingGlobal {
-                                ProgressView().scaleEffect(0.7)
-                            }
-                            Text("Apply to All")
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.purple)
-                    .disabled(applyingGlobal)
+                    statusPill(scannerPhase.label, scannerPhase.color)
                 }
 
-                // Auto-protect toggle
-                HStack {
-                    Toggle(isOn: $autoProtectEnabled) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Auto-protect new processes")
-                                .font(.system(.body, design: .monospaced))
-                            Text(autoProtectEnabled
-                                 ? "Scanning every 5s · \(autoProtectCount) applied"
-                                 : "Watch for new processes and apply multiplier automatically")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(autoProtectEnabled ? .green : .secondary)
+                Text(
+                    "Locates the kernel ledger entry for physical footprint in lara's own " +
+                    "task struct. Once found, memory limits can be written directly, " +
+                    "bypassing the ~2.2 GB cap that memorystatus_control cannot exceed."
+                )
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.secondary)
+
+                if case .failed(let reason) = scannerPhase {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red).font(.caption)
+                        Text(reason)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.red)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if !mgr.dsready {
+                            reqRow("KRW not ready — run exploit first")
+                        }
+                        if mgr.dsready && !rcAvailable {
+                            reqRow("RC required — initialise a process in Remote File Manager")
                         }
                     }
-                    .onChange(of: autoProtectEnabled) { enabled in
-                        if enabled { startAutoProtect() } else { stopAutoProtect() }
+                    Spacer()
+                    if case .running = scannerPhase {
+                        ProgressView().scaleEffect(0.9)
+                    } else {
+                        Button {
+                            runScanner()
+                        } label: {
+                            Label(
+                                scannerPhase.isReady ? "Re-scan" : "Scan",
+                                systemImage: "magnifyingglass"
+                            )
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                        .disabled(!mgr.dsready || !rcAvailable || scannerPhase == .running)
                     }
+                }
+
+                if scannerPhase.isReady, let offsets = LedgerScanner.cached {
+                    Text(offsets.description)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(.purple.opacity(0.8))
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.purple.opacity(0.06))
+                                .overlay(RoundedRectangle(cornerRadius: 5)
+                                    .stroke(Color.purple.opacity(0.2), lineWidth: 0.5))
+                        )
                 }
             }
+            .padding(.vertical, 4)
         } header: {
-            Text("Memory Multiplier")
+            Text("Memory Scanner")
         } footer: {
-            Text("Reads each process's current jetsam limit and multiplies it. Tries: direct → RC configd → RC any root process → syscall(396) → KRW kernel write.")
+            Text(
+                "Runs once per session. Targets lara's own process. " +
+                "All memory limit writes after this need only KRW."
+            )
         }
     }
 
-    // MARK: - Protected section
+    // MARK: Modified section
 
-    private var protectedSection: some View {
+    @ViewBuilder
+    private var modifiedSection: some View {
         Section {
-            ForEach(protectedProcesses) { proc in
+            ForEach(modifiedProcesses) { proc in
                 HStack(spacing: 10) {
-                    Circle().fill(proc.multiplier > 0 ? Color.purple : Color.green)
-                        .frame(width: 8, height: 8)
-                    VStack(alignment: .leading, spacing: 2) {
+                    Circle()
+                        .fill(proc.ledgerLimitMB != nil ? Color.purple : Color.green)
+                        .frame(width: 7, height: 7)
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(proc.name)
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.semibold)
-                        HStack(spacing: 6) {
-                            if proc.multiplier > 0 {
-                                bandTag("\(proc.multiplier)x", .purple)
-                                Text("\(proc.origActiveMB)→\(proc.origActiveMB * proc.multiplier) MB")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                if !proc.multiplierApproach.isEmpty {
-                                    bandTag(proc.multiplierApproach, .indigo)
-                                }
+                            .font(.system(.body, design: .monospaced, weight: .semibold))
+                            .lineLimit(1)
+                        HStack(spacing: 5) {
+                            if let lim = proc.ledgerLimitMB {
+                                inlineTag("\(lim) MB ledger", .purple)
                             }
-                            if proc.isProtected {
-                                Text("band \(proc.origBand)→\(proc.targetBand)")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-                            if proc.limitMB == -1 && proc.multiplier == 0 {
-                                bandTag("unlimited", .blue)
-                            } else if proc.limitMB > 0 && proc.multiplier == 0 {
-                                bandTag("\(proc.limitMB) MB \(proc.terminateOnLimit ? "hard" : "soft")", .orange)
+                            if proc.bandApplied {
+                                inlineTag("band \(proc.origBand)→\(proc.targetBand)", .green)
                             }
                         }
                     }
                     Spacer()
                     Text("pid \(proc.pid)")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.secondary)
-                    Button("Restore") {
-                        restore(pid: Int32(proc.pid))
+                    Button {
+                        restoreProcess(pid: proc.pid)
+                    } label: {
+                        Text("Restore")
+                            .font(.system(size: 11, design: .monospaced))
                     }
-                    .font(.system(size: 12))
                     .buttonStyle(.bordered)
                     .tint(.orange)
+                    .controlSize(.small)
                 }
                 .padding(.vertical, 2)
+                .contentShape(Rectangle())
+                .onTapGesture { editingProcess = proc }
             }
         } header: {
-            Text("Protected (\(protectedProcesses.count))")
+            Text("Modified (\(modifiedProcesses.count))")
         } footer: {
-            Text("Restore before rebooting to avoid unexpected behaviour.")
+            Text("Tap to re-edit. KRW ledger writes persist until reboot.")
                 .foregroundColor(.orange)
         }
     }
 
-    // MARK: - Running processes section
+    // MARK: Process list section
 
-    private var runningSection: some View {
+    @ViewBuilder
+    private var processListSection: some View {
         Section {
             if loading {
-                HStack { Spacer(); ProgressView(); Text("Scanning…").foregroundColor(.secondary); Spacer() }
-            } else if filteredProcesses.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Text(" Scanning…")
+                        .foregroundColor(.secondary)
+                        .font(.system(.body, design: .monospaced))
+                    Spacer()
+                }
+            } else if unmodifiedProcesses.isEmpty {
                 Text(searchText.isEmpty ? "No processes found" : "No matches")
                     .foregroundColor(.secondary)
+                    .font(.system(.body, design: .monospaced))
             } else {
-                ForEach(filteredProcesses.indices, id: \.self) { i in
-                    processRow(filteredProcesses[i])
+                ForEach(unmodifiedProcesses) { proc in
+                    processRow(proc)
                 }
             }
         } header: {
             HStack {
                 Text(searchText.isEmpty
                      ? "Running (\(processes.count))"
-                     : "Running (\(filteredProcesses.count) of \(processes.count))")
+                     : "Results (\(unmodifiedProcesses.count) of \(processes.count))")
                 Spacer()
-                Text("R = root  M = mobile")
+                Text("R=root  M=mobile")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(.secondary)
             }
         } footer: {
-            Text("Tap a process to set its Jetsam priority band, memory limit, or multiplier.")
+            Text("Tap any process to configure its memory limit or priority band.")
         }
     }
 
@@ -1047,575 +359,64 @@ struct JetsamView: View {
     private func processRow(_ proc: JetsamProcess) -> some View {
         HStack(spacing: 10) {
             Text(proc.uid == 0 ? "R" : "M")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundColor(proc.uid == 0 ? .orange : .secondary)
                 .frame(width: 14)
-
             VStack(alignment: .leading, spacing: 1) {
                 Text(proc.name)
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(1)
                 Text("pid \(proc.pid)")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.secondary)
             }
-
             Spacer()
-
-            Image(systemName: "cpu")
-                .foregroundColor(.secondary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10))
+                .foregroundColor(Color(.systemGray4))
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            // Capture full struct NOW — don't rely on a pid lookup after async refresh
-            editingProcess = proc
-            showEditor     = true
-        }
-        .disabled(!mgr.dsready && !mgr.sbxready)
-    }
-
-    // MARK: - Editor sheet
-
-    struct EditorSheet: View {
-        @Binding var process:  JetsamProcess
-        @Binding var applying: Bool          // driven from JetsamView while apply() is in flight
-        let onApply:   (JetsamProcess) -> Void
-        let onMultiply: (Int) -> Void
-        @Environment(\.dismiss) private var dismiss
-
-        @State private var bandDouble:         Double = 12
-        @State private var limitDouble:        Double = -1
-        @State private var terminateOnLimit:   Bool   = false
-        @State private var selectedMultiplier: Int    = 3
-        @State private var multiplyBusy:       Bool   = false
-        @State private var absoluteMode:       Bool   = false   // set an absolute MB instead of multiply
-        @State private var absoluteMB:         Double = 2700    // default absolute target
-        @State private var applyFeedback:      String = ""      // inline result after apply
-
-        private let bandMarkers: [(Int, String)] = [
-            (0,  "idle"), (4, "bg suspend"), (5, "bg audio"),
-            (8,  "daemon"), (10, "foreground"), (12, "assertion"),
-            (15, "SpringBoard"), (16, "critical — max safe")
-        ]
-
-        var body: some View {
-            NavigationView {
-                List {
-                    Section("Process") {
-                        LabeledContent("Name", value: process.name)
-                        LabeledContent("PID",  value: "\(process.pid)")
-                        LabeledContent("UID",  value: "\(process.uid) (\(process.uid == 0 ? "root" : "mobile"))")
-                    }
-
-                    // ── Multiplier section (Dopamine-style) ───────────────────
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Image(systemName: "bolt.shield")
-                                    .foregroundColor(.purple)
-                                Text("Memory Limit")
-                                    .font(.system(.body, design: .monospaced))
-                                Spacer()
-                                if process.multiplier > 0 {
-                                    bandTag("active: \(process.multiplier)x via \(process.multiplierApproach)", .purple)
-                                }
-                            }
-
-                            // Mode toggle: multiply current vs set absolute
-                            Picker("Mode", selection: $absoluteMode) {
-                                Text("Multiply current").tag(false)
-                                Text("Set absolute MB").tag(true)
-                            }
-                            .pickerStyle(.segmented)
-
-                            if absoluteMode {
-                                // ── Absolute MB mode ──────────────────────────
-                                // Directly sets the target to a specific MB rather than
-                                // multiplying whatever the current limit happens to be.
-                                // Useful when the current limit read returns 0 or wrong.
-                                HStack {
-                                    Text("Target")
-                                        .font(.system(.body, design: .monospaced))
-                                    Spacer()
-                                    Text("\(Int(absoluteMB)) MB")
-                                        .font(.system(.body, design: .monospaced))
-                                        .foregroundColor(.purple)
-                                        .fontWeight(.semibold)
-                                }
-                                Slider(value: $absoluteMB, in: 256...3072, step: 64)
-                                    .tint(.purple)
-                                HStack(spacing: 6) {
-                                    ForEach([1024, 1536, 2048, 2700, 3072], id: \.self) { mb in
-                                        Button("\(mb)") { absoluteMB = Double(mb) }
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .buttonStyle(.bordered)
-                                            .tint(Int(absoluteMB) == mb ? .purple : .secondary)
-                                            .controlSize(.mini)
-                                    }
-                                }
-                                Text("Sets phys_footprint ledger cap + jetsam limit directly to this value via RC.")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                // ── Multiply mode ─────────────────────────────
-                                HStack(spacing: 8) {
-                                    ForEach([2, 3, 4], id: \.self) { mult in
-                                        Button("\(mult)x") { selectedMultiplier = mult }
-                                            .font(.system(.body, design: .monospaced).bold())
-                                            .buttonStyle(.bordered)
-                                            .tint(selectedMultiplier == mult ? .purple : .secondary)
-                                    }
-                                }
-                                Text("Reads the current memlimit and multiplies it. If current reads as 0, use absolute mode instead.")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            // Apply button
-                            Button {
-                                multiplyBusy = true
-                                applyFeedback = "Working…"
-                                if absoluteMode {
-                                    // Pass absolute MB as a negative multiplier sentinel
-                                    // handled in applyMultiplierToProcess via absoluteMB param
-                                    onMultiply(-Int(absoluteMB))   // negative = absolute mode
-                                } else {
-                                    onMultiply(selectedMultiplier)
-                                }
-                                // The busy spinner clears when the parent posts the result
-                                // back via process.multiplierApproach update
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    // Check every 0.3s until process.multiplier is updated
-                                    // (the async result from applyMultiplierToProcess)
-                                }
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    if multiplyBusy {
-                                        ProgressView().scaleEffect(0.8).tint(.white)
-                                        Text("Applying…")
-                                            .font(.system(.body, design: .monospaced))
-                                    } else {
-                                        Label(absoluteMode
-                                              ? "Set \(Int(absoluteMB)) MB Limit"
-                                              : "Apply \(selectedMultiplier)x Multiplier",
-                                              systemImage: "bolt.shield.fill")
-                                    }
-                                    Spacer()
-                                }
-                                .fontWeight(.semibold)
-                            }
-                            .foregroundColor(.white)
-                            .listRowBackground(Color.purple.opacity(0.85))
-                            .disabled(multiplyBusy)
-                            .onChange(of: process.multiplierApproach) { _ in
-                                // Approach string updated = async result is back
-                                multiplyBusy  = false
-                                applyFeedback = process.multiplier > 0
-                                    ? "✓ \(process.origActiveMB)→\(process.origActiveMB * max(process.multiplier, 1)) MB via \(process.multiplierApproach)"
-                                    : "✗ All approaches failed — check RC is inited on configd"
-                            }
-
-                            // Inline result
-                            if !applyFeedback.isEmpty {
-                                Text(applyFeedback)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(applyFeedback.hasPrefix("✓") ? .green : .red)
-                            }
-                        }
-                    } header: { Text("Jetsam Multiplier") }
-                    footer: { Text("Uses task_set_phys_footprint_limit via RC (cmd 6 syscall 396) — raises the VM ledger hard cap that actually kills memory-heavy apps.") }
-
-                    // ── Priority band ─────────────────────────────────────────
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text("Band")
-                                    .font(.system(.body, design: .monospaced))
-                                Spacer()
-                                Text("\(Int(bandDouble))  · \(bandLabel(Int(bandDouble)))")
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundColor(bandColour(Int(bandDouble)))
-                                    .fontWeight(.semibold)
-                            }
-                            Slider(value: $bandDouble, in: 0...16, step: 1)
-                                .tint(bandColour(Int(bandDouble)))
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(bandMarkers, id: \.0) { band, label in
-                                        Button("\(band)") { bandDouble = Double(band) }
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .buttonStyle(.bordered)
-                                            .tint(Int(bandDouble) == band ? bandColour(band) : .secondary)
-                                            .controlSize(.mini)
-                                    }
-                                }
-                            }
-                        }
-                    } header: { Text("Priority Band") }
-                    footer: { Text("Foreground apps sit at band 10. SpringBoard is 15. Do not exceed 16.") }
-
-                    // ── Memory limit ──────────────────────────────────────────
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text("Memory Limit")
-                                    .font(.system(.body, design: .monospaced))
-                                Spacer()
-                                Text(limitDouble < 0 ? "Unlimited" : "\(Int(limitDouble)) MB")
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundColor(limitDouble < 0 ? .blue : .orange)
-                                    .fontWeight(.semibold)
-                            }
-                            Slider(value: $limitDouble, in: -1...2048, step: 1)
-                                .tint(limitDouble < 0 ? .blue : .orange)
-                            Toggle("Unlimited (no cap)", isOn: Binding(
-                                get: { limitDouble < 0 },
-                                set: { limitDouble = $0 ? -1 : 512 }
-                            ))
-                            Divider()
-                            Toggle(isOn: $terminateOnLimit) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Terminate process on limit reached")
-                                        .font(.system(.body, design: .monospaced))
-                                    Text(terminateOnLimit
-                                         ? "Hard cap — process is killed when footprint exceeds limit"
-                                         : "Soft cap — process receives a jetsam warning, not killed")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundColor(terminateOnLimit ? .red : .secondary)
-                                }
-                            }
-                            .disabled(limitDouble < 0)
-                        }
-                    } header: { Text("Memory Limit") }
-                    footer: { Text("Unlimited removes the per-process footprint cap. A specific limit caps a runaway process.") }
-
-                    // ── Apply band + limit button ─────────────────────────────
-                    Section {
-                        Button {
-                            process.targetBand       = Int(bandDouble)
-                            process.limitMB          = Int(limitDouble)
-                            process.terminateOnLimit = terminateOnLimit
-                            onApply(process)
-                            dismiss()
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if applying {
-                                    ProgressView().scaleEffect(0.8).tint(.white)
-                                    Text("Applying…")
-                                        .font(.system(.body, design: .monospaced))
-                                } else {
-                                    Label("Apply Jetsam Policy", systemImage: "cpu")
-                                        .fontWeight(.semibold)
-                                }
-                                Spacer()
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .listRowBackground(applying ? Color.gray : Color.blue)
-                        .disabled(applying)
-                    } footer: {
-                        Text("Sets priority band via memorystatus_control. Routes through configd (root) via RC if direct call fails.")
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .navigationTitle(process.name)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                }
-                .onAppear {
-                    bandDouble       = Double(process.targetBand)
-                    limitDouble      = Double(process.limitMB)
-                    terminateOnLimit = process.terminateOnLimit
-                    selectedMultiplier = process.multiplier > 0 ? process.multiplier : 3
-                }
-            }
-        }
-
-        private func bandLabel(_ b: Int) -> String {
-            bandMarkers.last(where: { $0.0 <= b })?.1 ?? "?"
-        }
-
-        private func bandColour(_ b: Int) -> Color {
-            switch b {
-            case 0...4:   return .red
-            case 5...9:   return .orange
-            case 10...12: return .green
-            case 13...15: return .blue
-            default:      return .purple
-            }
-        }
-
-        @ViewBuilder
-        private func bandTag(_ text: String, _ color: Color) -> some View {
-            Text(text)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundColor(color)
-                .padding(.horizontal, 4).padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(color.opacity(0.12))
-                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(color.opacity(0.3), lineWidth: 0.5))
-                )
+            editingProcess = proc   // captured here; sheet(item:) always has it
         }
     }
 
-    // MARK: - Multiplier actions
+    // MARK: Actions
 
-    /// Apply the multiplier to a single process (called from EditorSheet).
-    /// A negative `multiplier` value is the absolute mode sentinel:
-    ///   multiplier = -2700 → set limit to exactly 2700 MB
-    /// A positive value is the normal Nx multiplier.
-    private func applyMultiplierToProcess(pid: UInt32, multiplier: Int) {
+    private func runScanner() {
+        if case .running = scannerPhase { return }
+
+        guard let capture = captureRC() else {
+            scannerPhase = .failed(
+                "No ready RC in pool — open Remote File Manager and initialise a process first"
+            )
+            return
+        }
+
+        scannerPhase = .running
+        scannerLog   = ""
+        let rcio     = RemoteFileIO.shared
+
         DispatchQueue.global(qos: .userInitiated).async {
-            let result: MultiplierResult
-
-            if multiplier < 0 {
-                // Absolute mode: value is the negative target MB
-                let targetMB = Int32(-multiplier)
-                result = JetsamMultiplier.applyAbsolute(pid: Int32(pid), targetMB: targetMB)
-            } else {
-                result = JetsamMultiplier.applyMultiplier(
-                    pid: Int32(pid), multiplier: Int32(multiplier)
-                )
-            }
-
+            let result = LedgerScanner.runScanner(rcCapture: capture, rcio: rcio)
             DispatchQueue.main.async {
-                if let idx = processes.firstIndex(where: { $0.pid == pid }) {
-                    if result.ok {
-                        processes[idx].multiplier         = multiplier < 0 ? 1 : multiplier
-                        processes[idx].origActiveMB       = Int(result.prevActive)
-                        processes[idx].origInactiveMB     = Int(result.prevInactive)
-                        processes[idx].multiplierApproach = result.approach
-                    } else {
-                        // Still update approach string so onChange fires in EditorSheet
-                        processes[idx].multiplierApproach = "failed"
-                    }
-                }
-                // Also update editingProcess so the sheet's onChange fires
-                if editingProcess?.pid == pid {
-                    editingProcess?.multiplierApproach = result.ok ? result.approach : "failed"
-                    if result.ok {
-                        editingProcess?.multiplier    = multiplier < 0 ? 1 : multiplier
-                        editingProcess?.origActiveMB  = Int(result.prevActive)
-                    }
-                }
-                statusMessage = result.summary
-                showStatus    = true
+                self.scannerLog   = result.log
+                self.scannerPhase = result.ok ? .ready : .failed(result.detail)
             }
         }
     }
 
-    /// Apply the global multiplier to all processes
-    private func applyGlobalMultiplier() {
-        applyingGlobal = true
-        let mult   = globalMultiplier
-        let procs  = processes
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            var succeeded = 0
-            var failed    = 0
-            var details:  [String] = []
-
-            for proc in procs {
-                // Skip kernel (pid 0), launchd (pid 1), and already-multiplied
-                guard proc.pid > 1, proc.multiplier == 0 else { continue }
-
-                let result = JetsamMultiplier.applyMultiplier(
-                    pid: Int32(proc.pid), multiplier: Int32(mult)
-                )
-
-                DispatchQueue.main.async {
-                    if let idx = self.processes.firstIndex(where: { $0.pid == proc.pid }), result.ok {
-                        self.processes[idx].multiplier        = mult
-                        self.processes[idx].origActiveMB      = Int(result.prevActive)
-                        self.processes[idx].origInactiveMB    = Int(result.prevInactive)
-                        self.processes[idx].multiplierApproach = result.approach
-                    }
-                }
-
-                if result.ok { succeeded += 1 }
-                else {
-                    failed += 1
-                    details.append("\(proc.name): \(result.detail)")
-                }
-            }
-
-            DispatchQueue.main.async {
-                self.applyingGlobal = false
-                self.statusMessage  = "\(mult)x applied to \(succeeded) processes"
-                    + (failed > 0 ? ", \(failed) failed" : "")
-                    + (details.isEmpty ? "" : "\n" + details.prefix(5).joined(separator: "\n"))
-                self.showStatus     = true
-            }
+    /// Must be called on the main thread.
+    private func captureRC() -> (rc: RemoteCall, trojan: UInt64)? {
+        let rcio = RemoteFileIO.shared
+        for name in ["configd", "SpringBoard", "securityd"] {
+            guard case .ready = rcio.pool[name]?.state,
+                  let rc = rcio.pool[name]?.rc else { continue }
+            let trojan = rc.trojanMem
+            guard trojan != 0 else { continue }
+            return (rc, trojan)
         }
-    }
-
-    // MARK: - Auto-protect
-
-    private func startAutoProtect() {
-        stopAutoProtect()
-        autoProtectCount = 0
-        autoProtectTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            autoProtectTick()
-        }
-    }
-
-    private func stopAutoProtect() {
-        autoProtectTimer?.invalidate()
-        autoProtectTimer = nil
-    }
-
-    /// Called every 5s when auto-protect is on.  Scans proclist for new processes
-    /// (those not in our current `processes` array or not yet multiplied) and
-    /// applies the multiplier.
-    private func autoProtectTick() {
-        let mult = globalMultiplier
-        let knownPIDs = Set(processes.filter { $0.multiplier > 0 }.map { $0.pid })
-
-        DispatchQueue.global(qos: .utility).async {
-            var count: Int32 = 0
-            guard let ptr = proclist(nil, &count), count > 0 else { return }
-            defer { free_proclist(ptr) }
-
-            var newlyProtected = 0
-
-            for i in 0..<Int(count) {
-                let e = ptr[i]
-                guard e.pid > 1, !knownPIDs.contains(e.pid) else { continue }
-
-                let result = JetsamMultiplier.applyMultiplier(
-                    pid: Int32(e.pid), multiplier: Int32(mult)
-                )
-
-                if result.ok {
-                    newlyProtected += 1
-                    let name = withUnsafeBytes(of: e.name) { raw -> String in
-                        let b   = raw.bindMemory(to: UInt8.self)
-                        let end = b.firstIndex(of: 0) ?? b.endIndex
-                        return String(bytes: b[..<end], encoding: .utf8) ?? "pid \(e.pid)"
-                    }
-
-                    DispatchQueue.main.async {
-                        // Add or update in processes array
-                        if let idx = self.processes.firstIndex(where: { $0.pid == e.pid }) {
-                            self.processes[idx].multiplier        = mult
-                            self.processes[idx].origActiveMB      = Int(result.prevActive)
-                            self.processes[idx].origInactiveMB    = Int(result.prevInactive)
-                            self.processes[idx].multiplierApproach = result.approach
-                        } else {
-                            var p = JetsamProcess(pid: e.pid, uid: e.uid, name: name)
-                            p.multiplier        = mult
-                            p.origActiveMB      = Int(result.prevActive)
-                            p.origInactiveMB    = Int(result.prevInactive)
-                            p.multiplierApproach = result.approach
-                            self.processes.append(p)
-                        }
-                    }
-                }
-            }
-
-            if newlyProtected > 0 {
-                DispatchQueue.main.async {
-                    self.autoProtectCount += newlyProtected
-                }
-            }
-        }
-    }
-
-    // MARK: - Band/limit actions (existing)
-
-    /// Non-blocking wrapper — dispatches apply() off the main thread so the UI
-    /// doesn't freeze during RC calls.  Sets applying=true while in flight.
-    private func applyAsync(pid: UInt32) {
-        guard !applying else { return }
-        applying = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.applySync(pid: pid)
-            DispatchQueue.main.async { self.applying = false }
-        }
-    }
-
-    private func applySync(pid: UInt32) {
-        guard let idx = processes.firstIndex(where: { $0.pid == pid }) else { return }
-        let proc    = processes[idx]
-        let band    = Int32(proc.targetBand)
-        let limitMB = Int32(proc.limitMB)
-
-        // ── Priority band ──────────────────────────────────────────────────
-        var bandOK     = setJetsamBand(pid: Int32(proc.pid), band: band)
-        var bandSource = "direct"
-
-        if !bandOK {
-            let rcio = RemoteFileIO.shared
-            for rcProc in ["configd", "SpringBoard", "securityd"] {
-                guard let rc = rcio.rcProc(for: rcProc) else { continue }
-                let trojan = rc.trojanMem
-                guard trojan != 0 else { continue }
-
-                var propBuf = [UInt8](repeating: 0, count: 16)
-                withUnsafeBytes(of: band) { src in propBuf.replaceSubrange(0..<4, with: src) }
-                propBuf.withUnsafeBytes { bytes in
-                    rc.remote_write(trojan, from: bytes.baseAddress, size: UInt64(16))
-                }
-                // SYS_memorystatus_control = 396 on iOS 17.x (xnu-10002.81.5)
-                let sysRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                    args: [396,
-                           UInt64(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES),
-                           UInt64(bitPattern: Int64(proc.pid)),
-                           0, trojan, 16]) & 0xFFFFFFFF))
-                if sysRet == 0 {
-                    bandOK = true; bandSource = "rc:\(rcProc)"; break
-                }
-            }
-        }
-
-        // ── Memory limit ───────────────────────────────────────────────────
-        var limitOK     = true
-        var limitSource = ""
-
-        if limitMB > 0 {
-            let hwmFlags: UInt32 = UInt32(bitPattern: limitMB) | (proc.terminateOnLimit ? MEMORYSTATUS_FLAGS_HWM_HARD : 0)
-            let directRet = memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK,
-                                                  Int32(proc.pid), hwmFlags, nil, 0)
-            limitOK = directRet == 0; limitSource = "direct"
-
-            if !limitOK {
-                let rcio = RemoteFileIO.shared
-                for rcProc in ["configd", "SpringBoard", "securityd"] {
-                    guard let rc = rcio.rcProc(for: rcProc) else { continue }
-                    // SYS_memorystatus_control = 396
-                    let sysRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                        args: [396,
-                               UInt64(MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK),
-                               UInt64(bitPattern: Int64(proc.pid)),
-                               UInt64(hwmFlags), 0, 0]) & 0xFFFFFFFF))
-                    if sysRet == 0 {
-                        limitOK = true; limitSource = "rc:\(rcProc)"; break
-                    }
-                }
-            }
-        }
-
-        DispatchQueue.main.async {
-            self.processes[idx].isProtected = bandOK || limitOK
-            self.processes[idx].origBand    = proc.origBand
-
-            var parts: [String] = []
-            if bandOK  { parts.append("band→\(band) [\(bandSource)]") }
-            else       { parts.append("band FAILED errno=\(errno)") }
-            if limitMB == -1 { parts.append("limit: system default") }
-            else if limitMB > 0 {
-                let d = "\(limitMB)MB (\(proc.terminateOnLimit ? "hard" : "soft"))"
-                parts.append(limitOK ? "limit→\(d) [\(limitSource)]" : "limit FAILED \(d) errno=\(errno)")
-            }
-            self.statusMessage = "\(proc.name) pid \(proc.pid): " + parts.joined(separator: ", ")
-            self.showStatus    = true
-        }
+        return nil
     }
 
     private func refresh() {
@@ -1631,24 +432,15 @@ struct JetsamView: View {
                     let name = withUnsafeBytes(of: e.name) { raw -> String in
                         let b   = raw.bindMemory(to: UInt8.self)
                         let end = b.firstIndex(of: 0) ?? b.endIndex
-                        return String(bytes: b[..<end], encoding: .utf8) ?? "?"
+                        return String(bytes: b[..<end], encoding: .utf8) ?? ""
                     }
                     guard !name.isEmpty else { continue }
-                    let existing = self.processes.first(where: { $0.pid == e.pid })
                     var p = JetsamProcess(pid: e.pid, uid: e.uid, name: name)
-                    if let ex = existing {
-                        // Preserve all protected/multiplier state
-                        if ex.isProtected || ex.multiplier > 0 {
-                            p.isProtected        = ex.isProtected
-                            p.targetBand         = ex.targetBand
-                            p.limitMB            = ex.limitMB
-                            p.origBand           = ex.origBand
-                            p.multiplier         = ex.multiplier
-                            p.origActiveMB       = ex.origActiveMB
-                            p.origInactiveMB     = ex.origInactiveMB
-                            p.multiplierApproach = ex.multiplierApproach
-                            p.terminateOnLimit   = ex.terminateOnLimit
-                        }
+                    if let ex = self.processes.first(where: { $0.pid == e.pid }), ex.isModified {
+                        p.origBand      = ex.origBand
+                        p.targetBand    = ex.targetBand
+                        p.bandApplied   = ex.bandApplied
+                        p.ledgerLimitMB = ex.ledgerLimitMB
                     }
                     result.append(p)
                 }
@@ -1661,172 +453,414 @@ struct JetsamView: View {
         }
     }
 
-    private func apply(pid: UInt32) {
+    private func updateProcess(pid: UInt32, update: (inout JetsamProcess) -> Void) {
         guard let idx = processes.firstIndex(where: { $0.pid == pid }) else { return }
-        let proc    = processes[idx]
-        let band    = Int32(proc.targetBand)
-        let limitMB = Int32(proc.limitMB)
+        update(&processes[idx])
+        if editingProcess?.pid == pid { editingProcess = processes[idx] }
+    }
 
-        // ── Priority band ──────────────────────────────────────────────────
-        // Try direct first (works post-sbx if entitlement is present),
-        // then route through configd (uid 0, has com.apple.private.memorystatus).
-        var bandOK     = setJetsamBand(pid: Int32(proc.pid), band: band)
-        var bandSource = "direct"
-
-        if !bandOK {
-            // RC path via syscall(396) — avoids dlsym resolution issues for the
-            // private memorystatus_control symbol while still reaching the kernel.
-            let rcio = RemoteFileIO.shared
-            let rcCandidates = ["configd", "SpringBoard", "securityd"]
-            for rcProc in rcCandidates {
-                guard let rc = rcio.rcProc(for: rcProc) else { continue }
-                let trojan = rc.trojanMem
-                guard trojan != 0 else { continue }
-
-                // Build memorystatus_priority_properties_t in trojan memory:
-                //   int32_t  priority  (offset 0, 4 bytes)
-                //   uint64_t user_data (offset 8, 8 bytes — natural alignment pad)
-                var propBuf = [UInt8](repeating: 0, count: 16)
-                withUnsafeBytes(of: band) { src in propBuf.replaceSubrange(0..<4, with: src) }
-                propBuf.withUnsafeBytes { bytes in
-                    rc.remote_write(trojan, from: bytes.baseAddress, size: UInt64(16))
+    private func restoreProcess(pid: UInt32) {
+        guard let proc = processes.first(where: { $0.pid == pid }) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            if proc.bandApplied {
+                var buf = [UInt8](repeating: 0, count: 16)
+                let b   = Int32(proc.origBand)
+                withUnsafeBytes(of: b) { src in buf.replaceSubrange(0..<4, with: src) }
+                _ = buf.withUnsafeMutableBytes { ptr in
+                    memorystatus_control(
+                        MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES,
+                        Int32(pid), 0, ptr.baseAddress, 16)
                 }
+            }
+            DispatchQueue.main.async {
+                self.updateProcess(pid: pid) { $0.bandApplied = false; $0.ledgerLimitMB = nil }
+                self.toast     = "Restored \(proc.name)\(proc.ledgerLimitMB != nil ? " (ledger persists until reboot)" : "")"
+                self.showToast = true
+            }
+        }
+    }
 
-                let sysRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                    args: [396,
-                           UInt64(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES),
-                           UInt64(bitPattern: Int64(proc.pid)),
-                           0, trojan, 16]) & 0xFFFFFFFF))
-                if sysRet == 0 {
-                    bandOK = true
-                    bandSource = "rc:\(rcProc)"
-                    break
+    // MARK: View helpers
+
+    @ViewBuilder
+    private func statusPill(_ text: String, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(text)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(color)
+        }
+    }
+
+    @ViewBuilder
+    private func reqRow(_ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 10)).foregroundColor(.orange)
+            Text(text)
+                .font(.system(size: 10, design: .monospaced)).foregroundColor(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineTag(_ text: String, _ color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundColor(color)
+            .padding(.horizontal, 5).padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(color.opacity(0.1))
+                    .overlay(RoundedRectangle(cornerRadius: 3)
+                        .stroke(color.opacity(0.3), lineWidth: 0.5))
+            )
+    }
+}
+
+// MARK: - EditorSheet
+
+private struct EditorSheet: View {
+
+    let process:        JetsamProcess
+    let scannerPhase:   ScannerPhase
+    let onLimitApplied: (Int)    -> Void
+    let onBandApplied:  (Int)    -> Void
+    let onResult:       (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var mgr = laramgr.shared
+
+    @State private var targetMB:     Double = 2048
+    @State private var limitBusy     = false
+    @State private var limitFeedback = ""
+
+    @State private var bandDouble:   Double = 10
+    @State private var bandBusy      = false
+    @State private var bandFeedback  = ""
+
+    private let bandMarkers: [(v: Int, l: String)] = [
+        (0,  "idle"),       (4,  "bg-suspend"),  (5,  "bg-audio"),
+        (8,  "daemon"),     (10, "foreground"),   (12, "assertion"),
+        (15, "SpringBoard"), (16, "critical")
+    ]
+
+    private var scannerReady: Bool { scannerPhase.isReady }
+
+    var body: some View {
+        NavigationView {
+            List {
+                infoSection
+                memoryLimitSection
+                priorityBandSection
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(process.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .onAppear {
+                bandDouble = Double(process.targetBand)
+                if let lim = process.ledgerLimitMB { targetMB = Double(lim) }
+            }
+        }
+    }
+
+    // MARK: Info
+
+    private var infoSection: some View {
+        Section("Process") {
+            row("Name",  process.name)
+            row("PID",   "\(process.pid)")
+            row("UID",   "\(process.uid) (\(process.uid == 0 ? "root" : "mobile"))")
+            if let lim = process.ledgerLimitMB {
+                LabeledContent("Active Limit") {
+                    Text("\(lim) MB  (KRW)").foregroundColor(.purple)
+                        .font(.system(.body, design: .monospaced))
+                }
+            }
+            if process.bandApplied {
+                LabeledContent("Band") {
+                    Text("\(process.origBand) → \(process.targetBand)")
+                        .foregroundColor(.green)
+                        .font(.system(.body, design: .monospaced))
                 }
             }
         }
+    }
 
-        // ── Memory limit ───────────────────────────────────────────────────
-        var limitOK     = true
-        var limitSource = ""
+    // MARK: Memory limit section
+    //
+    // Writes directly to ledger→entries[phys_footprint].le_limit.
+    // Completely independent of the Priority Band section below.
+    // These two actions do different things and do NOT conflict.
 
-        if limitMB > 0 {
-            // cmd 5 SET_JETSAM_HIGH_WATER_MARK: flags = MB value | optional fatal bit.
-            // Encoding: UInt32(MB) | MEMORYSTATUS_FLAGS_HWM_HARD
-            let hwmFlags: UInt32 = UInt32(bitPattern: limitMB) | (proc.terminateOnLimit ? MEMORYSTATUS_FLAGS_HWM_HARD : 0)
-            let directRet = memorystatus_control(
-                MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK,
-                Int32(proc.pid), hwmFlags, nil, 0)
-            limitOK = directRet == 0
-            limitSource = "direct"
+    @ViewBuilder
+    private var memoryLimitSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
 
-            if !limitOK {
-                // RC path via syscall(396) on configd
-                let rcio = RemoteFileIO.shared
-                let rcCandidates = ["configd", "SpringBoard", "securityd"]
-                for rcProc in rcCandidates {
-                    guard let rc = rcio.rcProc(for: rcProc) else { continue }
-                    let sysRet = Int32(bitPattern: UInt32(rcio.callIn(rc: rc, name: "syscall",
-                        args: [396,
-                               UInt64(MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK),
-                               UInt64(bitPattern: Int64(proc.pid)),
-                               UInt64(hwmFlags), 0, 0]) & 0xFFFFFFFF))
-                    if sysRet == 0 {
-                        limitOK = true
-                        limitSource = "rc:\(rcProc)"
+                HStack {
+                    Image(systemName: "memorychip").foregroundColor(.purple)
+                    Text("Direct Ledger Write")
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                    Spacer()
+                    Text(scannerReady ? "KRW only" : "scanner required")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(scannerReady ? Color.purple.opacity(0.7) : .orange)
+                }
+
+                HStack {
+                    Text("Target").foregroundColor(.secondary)
+                        .font(.system(.body, design: .monospaced))
+                    Spacer()
+                    Text("\(Int(targetMB)) MB  (\(String(format: "%.2f", targetMB/1024)) GB)")
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                        .foregroundColor(scannerReady ? .purple : .secondary)
+                }
+
+                // Device-agnostic: 256 MB – 6 GB.  No device-specific cap.
+                Slider(value: $targetMB, in: 256...6144, step: 64)
+                    .tint(.purple).disabled(!scannerReady)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach([512, 1024, 1536, 2048, 3072, 4096, 5120, 6144], id: \.self) { mb in
+                            Button("\(mb) MB") { targetMB = Double(mb) }
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .buttonStyle(.bordered)
+                                .tint(Int(targetMB) == mb ? .purple : .secondary)
+                                .controlSize(.mini)
+                                .disabled(!scannerReady)
+                        }
+                    }
+                }
+
+                Button { applyLimit() } label: {
+                    HStack {
+                        Spacer()
+                        if limitBusy {
+                            ProgressView().scaleEffect(0.8).tint(.white)
+                            Text(" Writing to ledger…")
+                                .font(.system(.body, design: .monospaced)).foregroundColor(.white)
+                        } else {
+                            Image(systemName: "memorychip")
+                            Text("Apply \(Int(targetMB)) MB Limit")
+                                .font(.system(.body, design: .monospaced, weight: .semibold))
+                        }
+                        Spacer()
+                    }
+                    .foregroundColor(.white).padding(.vertical, 4)
+                }
+                .listRowBackground(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(scannerReady && mgr.dsready && !limitBusy ? Color.purple : Color.gray)
+                )
+                .disabled(!scannerReady || !mgr.dsready || limitBusy)
+
+                if !limitFeedback.isEmpty {
+                    Text(limitFeedback)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(limitFeedback.hasPrefix("✓") ? .green : .red)
+                }
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Memory Limit")
+        } footer: {
+            Text(scannerReady
+                 ? "Writes task→ledger→entries[phys_footprint].le_limit directly. Reboot clears the change."
+                 : "Run the Memory Scanner on the Jetsam Manager page first.")
+                .foregroundColor(scannerReady ? .secondary : .orange)
+        }
+    }
+
+    // MARK: Priority band section
+    //
+    // Sets the jetsam kill-order band via memorystatus_control.
+    // This affects kill ORDER under pressure — it does NOT set a memory hard cap.
+    // Completely independent of the Memory Limit section above.
+
+    @ViewBuilder
+    private var priorityBandSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+
+                HStack {
+                    Image(systemName: "list.number").foregroundColor(.green)
+                    Text("Jetsam Priority Band")
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                    Spacer()
+                    Text("Band \(Int(bandDouble))  · \(bandLabel(Int(bandDouble)))")
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                        .foregroundColor(bandColor(Int(bandDouble)))
+                }
+
+                Slider(value: $bandDouble, in: 0...16, step: 1)
+                    .tint(bandColor(Int(bandDouble)))
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(bandMarkers, id: \.v) { m in
+                            Button("\(m.v)") { bandDouble = Double(m.v) }
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .buttonStyle(.bordered)
+                                .tint(Int(bandDouble) == m.v ? bandColor(m.v) : .secondary)
+                                .controlSize(.mini)
+                        }
+                    }
+                }
+
+                Button { applyBand() } label: {
+                    HStack {
+                        Spacer()
+                        if bandBusy {
+                            ProgressView().scaleEffect(0.8).tint(.white)
+                            Text(" Setting band…")
+                                .font(.system(.body, design: .monospaced)).foregroundColor(.white)
+                        } else {
+                            Image(systemName: "list.number")
+                            Text("Set Band \(Int(bandDouble))  (\(bandLabel(Int(bandDouble))))")
+                                .font(.system(.body, design: .monospaced, weight: .semibold))
+                        }
+                        Spacer()
+                    }
+                    .foregroundColor(.white).padding(.vertical, 4)
+                }
+                .listRowBackground(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(!bandBusy ? Color.green.opacity(0.85) : Color.gray)
+                )
+                .disabled(bandBusy)
+
+                if !bandFeedback.isEmpty {
+                    Text(bandFeedback)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(bandFeedback.hasPrefix("✓") ? .green : .red)
+                }
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Priority Band")
+        } footer: {
+            Text(
+                "Controls kill ORDER under memory pressure. " +
+                "Higher band = killed later. 10 = foreground default. " +
+                "This does NOT set a memory hard cap — use Memory Limit above for that."
+            )
+        }
+    }
+
+    // MARK: applyLimit
+
+    private func applyLimit() {
+        guard !limitBusy else { return }
+        limitBusy    = true
+        limitFeedback = ""
+        let pid = Int32(process.pid)
+        let mb  = Int32(targetMB)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = LedgerScanner.applyLimit(pid: pid, targetMB: mb)
+            DispatchQueue.main.async {
+                limitBusy = false
+                if result.ok {
+                    limitFeedback = "✓ \(result.detail)"
+                    onLimitApplied(Int(mb))
+                    onResult("Memory limit set on \(process.name): \(result.detail)")
+                } else {
+                    limitFeedback = "✗ \(result.detail)"
+                    onResult("Memory limit failed (\(process.name)): \(result.detail)")
+                }
+            }
+        }
+    }
+
+    // MARK: applyBand
+
+    private func applyBand() {
+        guard !bandBusy else { return }
+
+        // RC pool must be read on the main thread — capture before dispatching.
+        var captures: [(rc: RemoteCall, trojan: UInt64, name: String)] = []
+        let rcio = RemoteFileIO.shared
+        for pName in ["configd", "SpringBoard", "securityd"] {
+            guard case .ready = rcio.pool[pName]?.state,
+                  let rc = rcio.pool[pName]?.rc else { continue }
+            let t = rc.trojanMem
+            guard t != 0 else { continue }
+            captures.append((rc, t, pName))
+        }
+
+        bandBusy    = true
+        bandFeedback = ""
+        let pid   = Int32(process.pid)
+        let band  = Int32(bandDouble)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Build the memorystatus_priority_properties buffer (16 bytes, band at offset 0)
+            var buf = [UInt8](repeating: 0, count: 16)
+            withUnsafeBytes(of: band) { src in buf.replaceSubrange(0..<4, with: src) }
+
+            // Attempt 1: direct call from lara
+            var ok     = false
+            var source = "direct"
+            let ret = buf.withUnsafeMutableBytes { ptr in
+                memorystatus_control(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES,
+                                     pid, 0, ptr.baseAddress, 16)
+            }
+            ok = ret == 0
+
+            // Attempt 2: RC fallback — configd is root and can set any pid's band
+            if !ok {
+                for cap in captures {
+                    buf.withUnsafeBytes { bytes in
+                        cap.rc.remote_write(cap.trojan,
+                                            from: bytes.baseAddress,
+                                            size: UInt64(16))
+                    }
+                    let rcRet = Int32(bitPattern: UInt32(
+                        rcio.callIn(rc: cap.rc, name: "syscall", args: [
+                            SYS_MEMORYSTATUS_CONTROL,
+                            UInt64(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES),
+                            UInt64(bitPattern: Int64(pid)),
+                            0, cap.trojan, 16
+                        ], timeout: 500) & 0xFFFF_FFFF
+                    ))
+                    if rcRet == 0 {
+                        ok     = true
+                        source = "rc:\(cap.name)"
                         break
                     }
                 }
             }
-        }
 
-        processes[idx].isProtected = bandOK || limitOK
-        processes[idx].origBand    = proc.origBand
-
-        // ── Status message ─────────────────────────────────────────────────
-        var parts: [String] = []
-        if bandOK  { parts.append("band→\(band) [\(bandSource)]") }
-        else       { parts.append("band FAILED (errno \(errno))") }
-
-        if limitMB == -1 {
-            parts.append("limit: system default")
-        } else if limitMB > 0 {
-            let limitDesc = "\(limitMB) MB (\(proc.terminateOnLimit ? "hard-kill" : "soft-warn"))"
-            if limitOK { parts.append("limit→\(limitDesc) [\(limitSource)]") }
-            else       { parts.append("limit FAILED (\(limitDesc), errno \(errno))") }
-        }
-
-        statusMessage = "\(proc.name) pid \(proc.pid): " + parts.joined(separator: ", ")
-        showStatus    = true
-    }
-
-    private func restore(pid: Int32) {
-        guard let idx = processes.firstIndex(where: { $0.pid == UInt32(pid) }) else { return }
-        let proc = processes[idx]
-
-        // Restore band if it was changed
-        if proc.isProtected {
-            _ = setJetsamBand(pid: pid, band: Int32(proc.origBand))
-        }
-
-        // Restore multiplier: write back original limits
-        if proc.multiplier > 0 && proc.origActiveMB > 0 {
-            // Try to restore via the same mechanism
-            var restoreBuf = JetsamMultiplier.buildMemlimitProps(
-                active: Int32(proc.origActiveMB), activeAttr: 0,
-                inactive: Int32(proc.origInactiveMB), inactiveAttr: 0
-            )
-            _ = restoreBuf.withUnsafeMutableBytes { ptr in
-                memorystatus_control(
-                    MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES,
-                    pid,
-                    0,
-                    ptr.baseAddress,
-                    kMemlimitPropsSize
-                )
+            DispatchQueue.main.async {
+                bandBusy = false
+                if ok {
+                    bandFeedback = "✓ band \(band) via \(source)"
+                    onBandApplied(Int(band))
+                    onResult("Band \(band) (\(self.bandLabel(Int(band)))) set on \(self.process.name)")
+                } else {
+                    bandFeedback  = "✗ failed (errno \(errno))"
+                    bandFeedback += captures.isEmpty
+                        ? " — initialise RC on configd for best reliability"
+                        : " — RC also failed"
+                    onResult("Band apply failed for \(self.process.name): errno \(errno)")
+                }
             }
         }
-
-        processes[idx].isProtected        = false
-        processes[idx].multiplier         = 0
-        processes[idx].multiplierApproach = ""
-        statusMessage = "Restored \(proc.name) to original state"
-        showStatus    = true
     }
 
-    private func restoreAll() {
-        for proc in protectedProcesses {
-            restore(pid: Int32(proc.pid))
-        }
-        statusMessage = "All Jetsam changes restored"
-        showStatus    = true
+    // MARK: Helpers
+
+    private func bandLabel(_ b: Int) -> String {
+        bandMarkers.last(where: { $0.v <= b })?.l ?? "?"
     }
 
-    // MARK: - memorystatus_control wrapper
-
-    private func setJetsamBand(pid: Int32, band: Int32) -> Bool {
-        // memorystatus_priority_properties_t:
-        //   int32_t  priority   (offset 0)
-        //   uint64_t user_data  (offset 8, natural alignment)
-        // Total: 16 bytes
-        var buf = [UInt8](repeating: 0, count: 16)
-        withUnsafeBytes(of: band) { src in
-            buf.replaceSubrange(0..<4, with: src)
-        }
-        let ret = buf.withUnsafeMutableBytes { ptr in
-            memorystatus_control(
-                MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES,
-                pid,
-                0,
-                ptr.baseAddress,
-                16
-            )
-        }
-        return ret == 0
-    }
-
-    // MARK: - Band helpers
-
-    private func bandColour(_ b: Int) -> Color {
+    private func bandColor(_ b: Int) -> Color {
         switch b {
         case 0...4:   return .red
         case 5...9:   return .orange
@@ -1837,19 +871,9 @@ struct JetsamView: View {
     }
 
     @ViewBuilder
-    private func bandTag(_ text: String, _ color: Color) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-            .foregroundColor(color)
-            .padding(.horizontal, 4).padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(color.opacity(0.12))
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(color.opacity(0.3), lineWidth: 0.5))
-            )
+    private func row(_ label: String, _ value: String) -> some View {
+        LabeledContent(label) {
+            Text(value).font(.system(.body, design: .monospaced))
+        }
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MARK: - End of JetsamView
-// ═══════════════════════════════════════════════════════════════════════════
