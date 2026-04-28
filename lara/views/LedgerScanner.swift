@@ -8,45 +8,59 @@
 //  Why cmd6 is NOT used
 //  ────────────────────
 //  MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT (cmd6) requires the
-//  com.apple.private.memorystatus entitlement. This check applies even to
-//  root processes. configd, securityd, and SpringBoard do not hold this
-//  entitlement. cmd6 via RC therefore returns EPERM regardless of uid.
+//  com.apple.private.memorystatus entitlement — checked before the uid test.
+//  This applies even to root processes. configd, securityd, and SpringBoard
+//  do not carry this entitlement, so RC through any of them returns EPERM
+//  regardless of uid. cmd6 is therefore permanently off the table.
 //
 //  What we do instead
 //  ──────────────────
 //  1. Call MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES (cmd8) directly from lara.
-//     cmd8 has no entitlement or privilege check — any process can read its
-//     own limit. This gives us the exact le_limit value in bytes.
+//     cmd8 performs no entitlement or privilege check — any process can read
+//     its own limit. This gives the exact le_limit value as memlimit_active_mb;
+//     in the kernel le_limit stores memlimit_active_mb * 1024 * 1024 (int64_t).
 //
-//  2. Walk lara's own task → ledger struct with kread64, searching for that
-//     known byte value. The phys_footprint le_limit (MB-aligned, < 16 GB) is
+//  2. Walk lara's own task → ledger with kread64, searching for that known byte
+//     value. The phys_footprint le_limit (positive, MB-aligned, < 16 GB) is
 //     uniquely identifiable among ledger entries.
 //
-//  3. Validate by credit/debit sanity check on the same entry.
+//  3. Validate via credit/debit sanity check on the same entry.
 //
-//  4. Cache the derived LedgerOffsets. All subsequent applies are pure kwrite64.
-//     No RC. No entitlement. No memorystatus_control at all.
+//  4. Cache the derived LedgerOffsets. All subsequent applies are pure kwrite64 —
+//     no RC, no entitlement, no memorystatus_control call.
+//
+//  Fallback chain
+//  ──────────────
+//  • cmd8 succeeds  → exact byte-match (most reliable)
+//  • cmd8 fails     → plausibility check: value > 100 MB, < 16 GB, MB-aligned
+//  • Candidate loop finds nothing → full 0x800-byte scan of ledger region
+//  • Scan finds nothing → fail; caller may retry after more app memory activity
 //
 //  Struct layout reference (xnu-10002.81.5 — stable across iOS 17/18/26)
 //  ──────────────────────────────────────────────────────────────────────
-//  struct ledger {
-//      uint64_t         lock_word;    // +0x00  spinlock (< 0x10000)
-//      uint32_t         l_refs;       // +0x08
-//      uint32_t         l_size;       // +0x0C
-//      ledger_template_t *l_template; // +0x10  kernel pointer
-//      struct ledger_entry l_entries[]; // +0x18  (typical; may vary)
-//  }
-//  struct ledger_entry {             // sizeof = 0x60 (iOS 17/18/26)
-//      int16_t  le_flags;            // +0x00
-//      int16_t  le_pad;              // +0x02
-//      uint32_t le_refs;             // +0x04
-//      int64_t  le_credit;           // +0x08
-//      int64_t  le_debit;            // +0x10
-//      int64_t  le_limit;            // +0x18  ← kwrite64 here
-//      int64_t  le_warn_level;       // +0x20
+//  struct task {
+//      ...
+//      ledger_t  ledger;               // ≈ +0x98
 //      ...
 //  }
-//  TASK_LEDGER_PHYS_FOOTPRINT = 7   (stable iOS 15 → 26)
+//  struct ledger {
+//      uint64_t          lock_word;      // +0x00  spinlock (value < 0x10000)
+//      uint32_t          l_refs;         // +0x08
+//      uint32_t          l_size;         // +0x0C
+//      ledger_template_t *l_template;    // +0x10  kernel pointer
+//      struct ledger_entry l_entries[];  // +0x18  (most XNU; may shift)
+//  }
+//  struct ledger_entry {                 // sizeof = 0x60 (iOS 17/18/26)
+//      int16_t  le_flags;                // +0x00
+//      int16_t  le_pad;                  // +0x02
+//      uint32_t le_refs;                 // +0x04
+//      int64_t  le_credit;              // +0x08
+//      int64_t  le_debit;               // +0x10
+//      int64_t  le_limit;               // +0x18  ← kwrite64 here
+//      int64_t  le_warn_level;          // +0x20
+//      ...
+//  }
+//  TASK_LEDGER_PHYS_FOOTPRINT = 7       (stable iOS 15 → 26)
 //
 
 import Foundation
@@ -68,13 +82,18 @@ private let CMD_GET_MEMLIMIT: Int32 = 8   // MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPE
 // MARK: - LedgerOffsets
 
 struct LedgerOffsets: CustomStringConvertible {
+    /// Offset of `ledger_t` pointer within `struct task`
     let off_task_ledger:      UInt64
+    /// Byte offset of `entries[]` from the start of `struct ledger`
     let off_ledger_entries:   UInt64
+    /// Byte offset of `le_limit` within one `struct ledger_entry`
     let off_le_limit:         UInt64
+    /// sizeof(struct ledger_entry) — stride between array elements
     let sizeof_ledger_entry:  UInt64
+    /// Index of TASK_LEDGER_PHYS_FOOTPRINT in the entries array
     let idx_phys_footprint:   UInt64
 
-    /// Offset from ledger base directly to the le_limit field.
+    /// Precomputed byte offset from the ledger base directly to le_limit.
     var limitFieldOffset: UInt64 {
         off_ledger_entries + (idx_phys_footprint * sizeof_ledger_entry) + off_le_limit
     }
@@ -86,6 +105,7 @@ struct LedgerOffsets: CustomStringConvertible {
         " stride=0x\(h(sizeof_ledger_entry))" +
         " idx=\(idx_phys_footprint)"
     }
+
     private func h(_ v: UInt64) -> String { String(format: "%llx", v) }
 }
 
@@ -101,12 +121,18 @@ struct LedgerResult {
 
 final class LedgerScanner {
 
+    /// Thread-safe cached offsets. Written once after a successful scan; never mutated.
     private(set) static var cached: LedgerOffsets? = nil
     private static let cacheLock = NSLock()
 
     // ── Scanner ───────────────────────────────────────────────────────────────
     //
-    // Requires: dsready only (no RC, no memorystatus entitlements).
+    // Locates the physical footprint le_limit field in lara's own kernel task
+    // struct and caches the resulting LedgerOffsets.
+    //
+    // Prerequisites: dsready (KRW) only.
+    //   No RC. No memorystatus entitlements. No cmd6.
+    //
     // MUST be called from a background thread.
     //
     @discardableResult
@@ -114,7 +140,7 @@ final class LedgerScanner {
         let mgr = laramgr.shared
 
         if let c = cached { return ok("already cached: \(c)") }
-        guard mgr.dsready else { return fail("KRW not ready — run exploit first") }
+        guard mgr.dsready  else { return fail("KRW not ready — run exploit first") }
 
         var log = ""
         func note(_ s: String) { log += s + "\n"; print("[LedgerScanner] \(s)") }
@@ -127,12 +153,17 @@ final class LedgerScanner {
         }
         note("   task @ 0x\(h(myTask))")
 
-        // ── 2. Get own memlimit as known search value ──────────────────────
+        // ── 2. Known limit value from cmd8 ────────────────────────────────
         //
-        // CMD_GET_MEMLIMIT_PROPERTIES (cmd8) has NO entitlement or privilege
-        // check. Any process can call it on its own pid. This gives the exact
-        // le_limit value as memlimit_active_mb; in the kernel le_limit stores
-        // memlimit_active_mb * 1024 * 1024 as an int64_t.
+        // MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES (cmd8) has no entitlement or
+        // privilege check. The call is made directly from lara's process context.
+        // In the kernel, le_limit = memlimit_active_mb * 1024 * 1024 (exact, no
+        // rounding), so the byte value we derive here is precisely what the ledger
+        // entry stores.
+        //
+        // If cmd8 fails (sandbox still blocking the syscall in some edge case),
+        // the scan falls back to an MB-alignment plausibility filter, which is
+        // permissive enough to work but slightly less precise.
         //
         note("2. reading own memlimit via cmd8 (no privilege required)")
         var knownLimitBytes: Int64? = nil
@@ -142,15 +173,16 @@ final class LedgerScanner {
                 _memorystatus_control(CMD_GET_MEMLIMIT, getpid(), 0, ptr.baseAddress, 16)
             }
             if ret == 0 {
+                // memlimit_active_mb is a 32-bit signed int at offset 0 of the buffer
                 let mb = buf.withUnsafeBytes { $0.load(as: Int32.self) }
                 if mb > 0 {
                     knownLimitBytes = Int64(mb) * 1024 * 1024
                     note("   known limit: \(mb) MB = \(knownLimitBytes!) bytes")
                 } else {
-                    note("   limit returned 0/unlimited — using plausibility check")
+                    note("   limit returned \(mb) (unlimited?) — plausibility fallback active")
                 }
             } else {
-                note("   cmd8 returned \(ret) (errno \(errno)) — using plausibility check")
+                note("   cmd8 returned \(ret) (errno \(errno)) — plausibility fallback active")
             }
         }
 
@@ -160,21 +192,25 @@ final class LedgerScanner {
             return fail("kread of task struct failed", log: log)
         }
 
-        var ledgerPtr:      UInt64 = 0
+        var ledgerPtr:       UInt64 = 0
         var off_task_ledger: UInt64 = 0
 
+        // Candidate offsets in approximate probability order for iOS 17/18/26.
         for off: UInt64 in [0x98, 0x88, 0x90, 0xA0, 0xA8, 0x80, 0xB0, 0xC0, 0x70] {
             guard Int(off) + 8 <= taskBuf.count else { continue }
             let candidate = taskBuf.withUnsafeBytes {
                 $0.load(fromByteOffset: Int(off), as: UInt64.self)
             }
             guard isKernelPtr(candidate) else { continue }
-            // Ledger heuristic: word0 = spinlock (small int), word1 = template pointer
-            guard let hdr = kreadBytes(candidate, count: 16, mgr: mgr) else { continue }
-            let w0 = hdr.withUnsafeBytes { $0.load(fromByteOffset: 0, as: UInt64.self) }
-            let w1 = hdr.withUnsafeBytes { $0.load(fromByteOffset: 8, as: UInt64.self) }
-            guard w0 < 0x10000, isKernelPtr(w1) else { continue }
-            ledgerPtr      = candidate
+
+            // Ledger heuristic: lock_word at +0x00 is a small integer; l_template
+            // at +0x10 is a valid kernel pointer.
+            guard let hdr = kreadBytes(candidate, count: 24, mgr: mgr) else { continue }
+            let w0 = hdr.withUnsafeBytes { $0.load(fromByteOffset:  0, as: UInt64.self) }
+            let w2 = hdr.withUnsafeBytes { $0.load(fromByteOffset: 16, as: UInt64.self) }
+            guard w0 < 0x10000, isKernelPtr(w2) else { continue }
+
+            ledgerPtr       = candidate
             off_task_ledger = off
             note("   off_task_ledger = +0x\(h(off)) → ledger @ 0x\(h(candidate))")
             break
@@ -183,15 +219,17 @@ final class LedgerScanner {
             return fail("ledger pointer not found in task struct", log: log)
         }
 
-        // ── 4. Locate le_limit by value match ─────────────────────────────
+        // ── 4. Locate le_limit via candidate combination search ────────────
         //
-        // Try candidate offset combinations. XNU priors come first so the fast
-        // path (matching on the very first iteration) is most common.
+        // Iterate over the most likely (entriesOff, stride, idx, leLimitOff)
+        // tuples. XNU priors come first so the correct combination is almost
+        // always found on the first iteration, making the total kread64 cost
+        // for the happy path just 3 reads (value + credit + debit).
         //
-        // Validation strategy:
-        //   • If cmd8 succeeded:  exact byte-match against knownLimitBytes
-        //   • If cmd8 failed:     plausibility check (positive, < 16 GB, MB-aligned)
-        // Either way, also check credit(+0x08) and debit(+0x10) are ≥ 0.
+        // Validation:
+        //   • knownLimitBytes available → exact match required
+        //   • knownLimitBytes absent    → plausibility: > 100 MB, < 16 GB, MB-aligned
+        //   In both cases: credit ≥ 0, debit ≥ 0, credit < 8 GB (sanity)
         //
         note("4. locating phys_footprint le_limit")
 
@@ -200,8 +238,8 @@ final class LedgerScanner {
         let idxCandidates:     [UInt64] = [7, 6, 8, 5, 9]
         let leLimitCandidates: [UInt64] = [0x18, 0x10, 0x20, 0x28]
 
-        var foundLimitAddr:  UInt64?       = nil
-        var foundOffsets:    LedgerOffsets? = nil
+        var foundLimitAddr: UInt64?        = nil
+        var foundOffsets:   LedgerOffsets? = nil
 
         outer: for entriesOff in entriesCandidates {
             for stride in strideCandidates {
@@ -213,22 +251,17 @@ final class LedgerScanner {
 
                         let value = Int64(bitPattern: mgr.kread64(address: limitAddr))
 
-                        // Value check
                         let valueOK: Bool
                         if let known = knownLimitBytes {
                             valueOK = (value == known)
                         } else {
-                            // No known value — use plausibility only
-                            // le_limit for phys_footprint is always a positive number
-                            // of bytes that's exactly N * 1024 * 1024 (set as MB * 1MiB)
-                            valueOK = value > 0 &&
-                                      value < 16 * 1024 * 1024 * 1024 &&
+                            valueOK = value > 100 * 1024 * 1024 &&
+                                      value < 16  * 1024 * 1024 * 1024 &&
                                       (value % (1024 * 1024)) == 0
                         }
                         guard valueOK else { continue }
 
-                        // Structural check: credit and debit on the same entry
-                        // must be non-negative and plausible
+                        // Structural sanity: credit and debit on this entry
                         let entryBase  = limitAddr &- leLimitOff
                         let creditAddr = entryBase + 0x08
                         let debitAddr  = entryBase + 0x10
@@ -241,11 +274,11 @@ final class LedgerScanner {
 
                         note("   ✓ entries=+0x\(h(entriesOff)) stride=0x\(h(stride))" +
                              " idx=\(idx) le_limit=+0x\(h(leLimitOff))")
-                        note("     le_limit @ 0x\(h(limitAddr)) = \(value / (1024*1024)) MB")
-                        note("     credit=\(credit/1024)KB debit=\(debit/1024)KB")
+                        note("     le_limit @ 0x\(h(limitAddr)) = \(value/(1024*1024)) MB")
+                        note("     credit=\(credit/1024) KB  debit=\(debit/1024) KB")
 
                         foundLimitAddr = limitAddr
-                        foundOffsets = LedgerOffsets(
+                        foundOffsets   = LedgerOffsets(
                             off_task_ledger:     off_task_ledger,
                             off_ledger_entries:  entriesOff,
                             off_le_limit:        leLimitOff,
@@ -258,34 +291,40 @@ final class LedgerScanner {
             }
         }
 
-        guard let limitAddr = foundLimitAddr,
-              let offsets   = foundOffsets else {
-            // Exhaustive search across the entire ledger region as last resort
-            note("   candidate combinations exhausted — trying byte scan of ledger region")
+        // ── 5. Byte-scan fallback ──────────────────────────────────────────
+        if foundLimitAddr == nil {
+            note("5. candidate combinations exhausted — byte-scanning ledger region")
             if let (addr, offs) = byteScan(
-                ledgerPtr: ledgerPtr,
+                ledgerPtr:       ledgerPtr,
                 off_task_ledger: off_task_ledger,
                 knownLimitBytes: knownLimitBytes,
-                mgr: mgr,
-                note: note
+                mgr:             mgr,
+                note:            note
             ) {
-                cacheLock.lock()
-                cached = offs
-                cacheLock.unlock()
-                note("✓ scanner complete (byte scan): \(offs)")
-                return LedgerResult(ok: true, detail: offs.description, log: log)
+                foundLimitAddr = addr
+                foundOffsets   = offs
             }
-            return fail("le_limit field not found — try re-running after more app activity", log: log)
+        } else {
+            note("5. (byte-scan skipped — candidate loop succeeded)")
         }
 
-        // ── 5. Final readback ─────────────────────────────────────────────
-        note("5. readback validation")
+        guard let limitAddr = foundLimitAddr,
+              let offsets   = foundOffsets else {
+            return fail(
+                "le_limit field not found — try re-running after more app memory activity",
+                log: log
+            )
+        }
+
+        // ── 6. Final readback ──────────────────────────────────────────────
+        note("6. readback validation")
         let rb = Int64(bitPattern: mgr.kread64(address: limitAddr))
         guard rb > 0, rb < 16 * 1024 * 1024 * 1024 else {
             return fail("readback \(rb) implausible — offsets wrong", log: log)
         }
-        note("   ✓ \(rb / (1024*1024)) MB at 0x\(h(limitAddr))")
+        note("   ✓ \(rb/(1024*1024)) MB @ 0x\(h(limitAddr))")
 
+        // ── Cache ──────────────────────────────────────────────────────────
         cacheLock.lock()
         cached = offsets
         cacheLock.unlock()
@@ -294,28 +333,28 @@ final class LedgerScanner {
         return LedgerResult(ok: true, detail: offsets.description, log: log)
     }
 
-    // ── Byte scan fallback ─────────────────────────────────────────────────
+    // ── Byte-scan fallback ────────────────────────────────────────────────────
     //
-    // Scans the ledger region byte-by-byte for a plausible le_limit value,
-    // then derives all other offsets from its position.
-    // Only reached if the candidate-combination search found nothing.
+    // Reads the full 0x800-byte ledger region and scans 8-byte-aligned positions
+    // for a plausible le_limit value, then derives all other offsets from it.
+    // Only reached when none of the ~144 candidate combinations matched.
     //
     private static func byteScan(
-        ledgerPtr: UInt64,
+        ledgerPtr:       UInt64,
         off_task_ledger: UInt64,
         knownLimitBytes: Int64?,
-        mgr: laramgr,
-        note: (String) -> Void
+        mgr:             laramgr,
+        note:            (String) -> Void
     ) -> (addr: UInt64, offsets: LedgerOffsets)? {
 
         guard let ledgerBuf = kreadBytes(ledgerPtr, count: 0x800, mgr: mgr) else {
-            note("   byte scan: kread of 0x800 ledger bytes failed")
+            note("   byte scan: kread of 0x800 bytes failed")
             return nil
         }
-
-        note("   byte scan: scanning 0x800 bytes")
+        note("   byte scan: scanning 0x\(String(format: "%x", ledgerBuf.count)) bytes")
 
         var result: (addr: UInt64, LedgerOffsets)? = nil
+
         ledgerBuf.withUnsafeBytes { raw in
             var i = 0
             while i + 8 <= raw.count {
@@ -326,7 +365,7 @@ final class LedgerScanner {
                     valueOK = (value == known)
                 } else {
                     valueOK = value > 100 * 1024 * 1024 &&
-                              value < 16 * 1024 * 1024 * 1024 &&
+                              value < 16  * 1024 * 1024 * 1024 &&
                               (value % (1024 * 1024)) == 0
                 }
 
@@ -334,19 +373,15 @@ final class LedgerScanner {
                     note("   candidate at ledger+0x\(String(format: "%x", i))" +
                          " = \(value/(1024*1024)) MB")
 
-                    // Try to derive le_limit offset and phys_footprint index
                     for leLimitOff: UInt64 in [0x18, 0x10, 0x20, 0x28] {
                         let eBase = i - Int(leLimitOff)
-                        guard eBase >= 0 else { continue }
+                        guard eBase >= 0, eBase + 0x18 <= raw.count else { continue }
 
-                        // Credit/debit sanity
-                        guard eBase + 0x18 <= ledgerBuf.count else { continue }
                         let credit = raw.load(fromByteOffset: eBase + 0x08, as: Int64.self)
                         let debit  = raw.load(fromByteOffset: eBase + 0x10, as: Int64.self)
                         guard credit >= 0, debit >= 0,
                               credit < 8 * 1024 * 1024 * 1024 else { continue }
 
-                        // Entry stride and idx
                         for stride: UInt64 in [0x60, 0x50, 0x70, 0x80] {
                             for idx: UInt64 in [7, 6, 8, 5] {
                                 let entriesOff = UInt64(eBase) &- (idx &* stride)
@@ -376,6 +411,7 @@ final class LedgerScanner {
     //
     // Writes targetMB directly to the phys_footprint le_limit field of pid's task.
     // Requires: dsready + cached offsets. No RC. No entitlements.
+    //
     // MUST be called from a background thread.
     //
     static func applyLimit(pid: Int32, targetMB: Int32) -> LedgerResult {
@@ -383,9 +419,9 @@ final class LedgerScanner {
         var log = ""
         func note(_ s: String) { log += s + "\n" }
 
-        guard mgr.dsready        else { return fail("KRW not ready — run exploit first") }
+        guard mgr.dsready         else { return fail("KRW not ready — run exploit first") }
         guard let offsets = cached else { return fail("offsets not cached — run scanner first") }
-        guard targetMB > 0        else { return fail("targetMB must be positive") }
+        guard targetMB > 0         else { return fail("targetMB must be positive") }
 
         guard let taskAddr = resolveTask(pid: pid, mgr: mgr) else {
             return fail("could not resolve task for pid \(pid)")
@@ -413,8 +449,10 @@ final class LedgerScanner {
 
         let after = mgr.kread64(address: limitAddr)
         guard after == targetBytes else {
-            return fail("readback mismatch: wrote \(targetBytes) got \(after)" +
-                        " — try re-scanning")
+            return fail(
+                "readback mismatch: wrote \(targetBytes) got \(after)" +
+                " — offsets may have shifted; try re-scanning"
+            )
         }
         note("after: \(targetMB) MB ✓")
 
@@ -427,6 +465,8 @@ final class LedgerScanner {
         p >= VM_MIN_KERNEL_ADDRESS && p < VM_MAX_KERNEL_ADDRESS
     }
 
+    /// Resolves the kernel task address for any pid via the allproc list.
+    /// Fast path for lara's own pid via task_self().
     static func resolveTask(pid: Int32, mgr: laramgr) -> UInt64? {
         if pid == getpid() {
             let t = task_self()
@@ -438,17 +478,17 @@ final class LedgerScanner {
         for i in 0..<Int(count) {
             let e = ptr[i]
             guard Int32(e.pid) == pid, e.kaddr != 0 else { continue }
-            let procRO = mgr.kread64(address: e.kaddr + UInt64(off_proc_p_proc_ro))
+            let procRO   = mgr.kread64(address: e.kaddr  + UInt64(off_proc_p_proc_ro))
             guard isKernelPtr(procRO) else { continue }
-            let taskAddr = mgr.kread64(address: procRO + UInt64(off_proc_ro_pr_task))
+            let taskAddr = mgr.kread64(address: procRO   + UInt64(off_proc_ro_pr_task))
             guard isKernelPtr(taskAddr) else { continue }
             return taskAddr
         }
         return nil
     }
 
-    /// Reads `count` bytes from a kernel address using repeated kread64.
-    /// laramgr provides no kreadbuf — this is the safe Swift equivalent.
+    /// Reads `count` bytes from a kernel address via repeated kread64.
+    /// laramgr exposes no kreadbuf — this is the safe Swift-layer equivalent.
     static func kreadBytes(_ addr: UInt64, count: Int, mgr: laramgr) -> [UInt8]? {
         guard mgr.dsready, isKernelPtr(addr), count > 0, count <= 0x4000 else { return nil }
         let aligned = (count + 7) & ~7
@@ -465,7 +505,9 @@ final class LedgerScanner {
         return Array(buf.prefix(count))
     }
 
-    private static func ok(_ d: String)                        -> LedgerResult { LedgerResult(ok: true,  detail: d,   log: "") }
+    private static func ok(_ d: String) -> LedgerResult {
+        LedgerResult(ok: true, detail: d, log: "")
+    }
     private static func fail(_ msg: String, log: String = "") -> LedgerResult {
         print("[LedgerScanner] ✗ \(msg)")
         return LedgerResult(ok: false, detail: msg, log: log + "FAIL: \(msg)\n")
