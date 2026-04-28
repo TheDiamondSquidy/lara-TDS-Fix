@@ -2,19 +2,20 @@
 //  JetsamView.swift
 //  lara
 //
-//  Jetsam memory manager — clean rewrite.
+//  Jetsam memory manager.
 //
 //  Two independent actions per process:
 //
 //  Memory Limit (Direct Ledger Write)
 //    Writes directly to ledger→entries[phys_footprint].le_limit via kwrite64.
-//    This bypasses the system-imposed memorystatus cap entirely.
+//    Bypasses the memorystatus_control entitlement cap entirely.
 //    Requires: exploit (KRW) + one-time scanner run.
+//    No RC. No memorystatus entitlements.
 //
 //  Priority Band
-//    Sets the jetsam kill-order band via memorystatus_control.
-//    Tries direct call first; falls back to RC on configd (root).
-//    Requires: exploit. RC recommended for best reliability.
+//    Sets the jetsam kill-order band via memorystatus_control cmd7.
+//    Tries direct call from lara first; falls back to RC (configd) if that fails.
+//    Requires: exploit. RC recommended for cross-process reliability.
 //
 //  Priority band reference:
 //    0   idle / background         (killed first)
@@ -24,13 +25,13 @@
 //   10   foreground app            (default)
 //   12   active assertion
 //   15   SpringBoard
-//   16   critical daemon           (highest safe value; never exceed)
+//   16   critical daemon           (highest safe value)
 //
 
 import SwiftUI
 import Darwin
 
-// MARK: - memorystatus_control (internal — accessible throughout this file)
+// MARK: - memorystatus_control
 
 @_silgen_name("memorystatus_control")
 func memorystatus_control(
@@ -42,11 +43,10 @@ func memorystatus_control(
 ) -> Int32
 
 let MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES: Int32 = 7
-let MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT:   Int32 = 6
 let MEMORYSTATUS_CMD_GET_MEMLIMIT_PROPERTIES: Int32 = 8
 let SYS_MEMORYSTATUS_CONTROL: UInt64 = 396   // iOS 17.x / xnu-10002.81.5
 
-// MARK: - ScannerPhase (file-scope — both JetsamView and EditorSheet reference it)
+// MARK: - ScannerPhase
 
 enum ScannerPhase: Equatable {
     case idle
@@ -56,10 +56,10 @@ enum ScannerPhase: Equatable {
 
     var label: String {
         switch self {
-        case .idle:          return "Not scanned"
-        case .running:       return "Scanning…"
-        case .ready:         return "Ready"
-        case .failed(let r): return "Failed: \(r)"
+        case .idle:           return "Not scanned"
+        case .running:        return "Scanning…"
+        case .ready:          return "Ready"
+        case .failed(let r):  return "Failed: \(r)"
         }
     }
 
@@ -76,6 +76,11 @@ enum ScannerPhase: Equatable {
         if case .ready = self { return true }
         return LedgerScanner.cached != nil
     }
+
+    var isRunning: Bool {
+        if case .running = self { return true }
+        return false
+    }
 }
 
 // MARK: - JetsamProcess
@@ -90,7 +95,7 @@ struct JetsamProcess: Identifiable {
     var targetBand:  Int  = 10
     var bandApplied: Bool = false
 
-    var ledgerLimitMB: Int? = nil  // nil = not modified via KRW
+    var ledgerLimitMB: Int? = nil  // nil = not yet written via KRW
 
     var isModified: Bool { bandApplied || ledgerLimitMB != nil }
 }
@@ -152,8 +157,6 @@ struct JetsamView: View {
         } message: {
             Text(toast)
         }
-        // .sheet(item:) — captures the process at tap time.
-        // The sheet ALWAYS opens with valid data on first tap.
         .sheet(item: $editingProcess) { proc in
             EditorSheet(
                 process:      proc,
@@ -218,15 +221,13 @@ struct JetsamView: View {
 
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
+                        // Only hard requirement is KRW.
                         if !mgr.dsready {
                             reqRow("KRW not ready — run exploit first")
                         }
-                        if mgr.dsready && !rcAvailable {
-                            reqRow("RC required — initialise a process in Remote File Manager")
-                        }
                     }
                     Spacer()
-                    if case .running = scannerPhase {
+                    if scannerPhase.isRunning {
                         ProgressView().scaleEffect(0.9)
                     } else {
                         Button {
@@ -240,7 +241,8 @@ struct JetsamView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.purple)
-                        .disabled(!mgr.dsready || !rcAvailable || scannerPhase == .running)
+                        // RC no longer required — KRW (dsready) is the only gate.
+                        .disabled(!mgr.dsready || scannerPhase.isRunning)
                     }
                 }
 
@@ -262,7 +264,7 @@ struct JetsamView: View {
             Text("Memory Scanner")
         } footer: {
             Text(
-                "Runs once per session. Targets lara's own process. " +
+                "Runs once per session. No RC required — uses KRW only. " +
                 "All memory limit writes after this need only KRW."
             )
         }
@@ -376,29 +378,25 @@ struct JetsamView: View {
                 .foregroundColor(Color(.systemGray4))
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            editingProcess = proc   // captured here; sheet(item:) always has it
-        }
+        .onTapGesture { editingProcess = proc }
     }
 
     // MARK: Actions
 
+    /// Runs the ledger scanner on a background thread.
+    /// No RC capture needed — scanner is pure KRW.
     private func runScanner() {
-        if case .running = scannerPhase { return }
-
-        guard let capture = captureRC() else {
-            scannerPhase = .failed(
-                "No ready RC in pool — open Remote File Manager and initialise a process first"
-            )
+        guard !scannerPhase.isRunning else { return }
+        guard mgr.dsready else {
+            scannerPhase = .failed("KRW not ready — run exploit first")
             return
         }
 
         scannerPhase = .running
         scannerLog   = ""
-        let rcio     = RemoteFileIO.shared
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = LedgerScanner.runScanner(rcCapture: capture, rcio: rcio)
+            let result = LedgerScanner.runScanner()
             DispatchQueue.main.async {
                 self.scannerLog   = result.log
                 self.scannerPhase = result.ok ? .ready : .failed(result.detail)
@@ -406,49 +404,38 @@ struct JetsamView: View {
         }
     }
 
-    /// Must be called on the main thread.
-    private func captureRC() -> (rc: RemoteCall, trojan: UInt64)? {
-        let rcio = RemoteFileIO.shared
-        for name in ["configd", "SpringBoard", "securityd"] {
-            guard case .ready = rcio.pool[name]?.state,
-                  let rc = rcio.pool[name]?.rc else { continue }
-            let trojan = rc.trojanMem
-            guard trojan != 0 else { continue }
-            return (rc, trojan)
-        }
-        return nil
-    }
-
     private func refresh() {
         guard !loading else { return }
         loading = true
+
         DispatchQueue.global(qos: .userInitiated).async {
-            var result: [JetsamProcess] = []
             var count: Int32 = 0
-            if let ptr = proclist(nil, &count), count > 0 {
-                for i in 0..<Int(count) {
-                    let e = ptr[i]
-                    guard e.pid > 1 else { continue }
-                    let name = withUnsafeBytes(of: e.name) { raw -> String in
-                        let b   = raw.bindMemory(to: UInt8.self)
-                        let end = b.firstIndex(of: 0) ?? b.endIndex
-                        return String(bytes: b[..<end], encoding: .utf8) ?? ""
-                    }
-                    guard !name.isEmpty else { continue }
-                    var p = JetsamProcess(pid: e.pid, uid: e.uid, name: name)
-                    if let ex = self.processes.first(where: { $0.pid == e.pid }), ex.isModified {
-                        p.origBand      = ex.origBand
-                        p.targetBand    = ex.targetBand
-                        p.bandApplied   = ex.bandApplied
-                        p.ledgerLimitMB = ex.ledgerLimitMB
-                    }
-                    result.append(p)
-                }
-                free_proclist(ptr)
+            guard let ptr = proclist(nil, &count), count > 0 else {
+                DispatchQueue.main.async { self.loading = false }
+                return
             }
+            defer { free_proclist(ptr) }
+
+            var result: [JetsamProcess] = []
+            for i in 0..<Int(count) {
+                let e = ptr[i]
+                guard e.pid > 0 else { continue }
+                let name = withUnsafeBytes(of: e.name) { raw in
+                    String(bytes: raw.prefix(while: { $0 != 0 }), encoding: .utf8) ?? "?"
+                }
+                result.append(JetsamProcess(pid: e.pid, uid: e.uid, name: name))
+            }
+            result.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
             DispatchQueue.main.async {
-                self.processes = result.sorted { $0.name.lowercased() < $1.name.lowercased() }
-                self.loading   = false
+                // Preserve modifications across refresh
+                let prev = Dictionary(uniqueKeysWithValues: self.processes.map { ($0.pid, $0) })
+                self.processes = result.map { p in
+                    guard var existing = prev[p.pid] else { return p }
+                    existing = p   // refresh pid/uid/name
+                    return existing
+                }
+                self.loading = false
             }
         }
     }
@@ -469,12 +456,14 @@ struct JetsamView: View {
                 _ = buf.withUnsafeMutableBytes { ptr in
                     memorystatus_control(
                         MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES,
-                        Int32(pid), 0, ptr.baseAddress, 16)
+                        Int32(pid), 0, ptr.baseAddress, 16
+                    )
                 }
             }
             DispatchQueue.main.async {
                 self.updateProcess(pid: pid) { $0.bandApplied = false; $0.ledgerLimitMB = nil }
-                self.toast     = "Restored \(proc.name)\(proc.ledgerLimitMB != nil ? " (ledger persists until reboot)" : "")"
+                self.toast = "Restored \(proc.name)" +
+                    (proc.ledgerLimitMB != nil ? " (ledger write persists until reboot)" : "")
                 self.showToast = true
             }
         }
@@ -530,17 +519,17 @@ private struct EditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var mgr = laramgr.shared
 
-    @State private var targetMB:     Double = 2048
-    @State private var limitBusy     = false
-    @State private var limitFeedback = ""
+    @State private var targetMB:      Double = 2048
+    @State private var limitBusy      = false
+    @State private var limitFeedback  = ""
 
-    @State private var bandDouble:   Double = 10
-    @State private var bandBusy      = false
-    @State private var bandFeedback  = ""
+    @State private var bandDouble:    Double = 10
+    @State private var bandBusy       = false
+    @State private var bandFeedback   = ""
 
     private let bandMarkers: [(v: Int, l: String)] = [
-        (0,  "idle"),       (4,  "bg-suspend"),  (5,  "bg-audio"),
-        (8,  "daemon"),     (10, "foreground"),   (12, "assertion"),
+        (0,  "idle"),        (4,  "bg-suspend"), (5,  "bg-audio"),
+        (8,  "daemon"),      (10, "foreground"),  (12, "assertion"),
         (15, "SpringBoard"), (16, "critical")
     ]
 
@@ -577,7 +566,8 @@ private struct EditorSheet: View {
             row("UID",   "\(process.uid) (\(process.uid == 0 ? "root" : "mobile"))")
             if let lim = process.ledgerLimitMB {
                 LabeledContent("Active Limit") {
-                    Text("\(lim) MB  (KRW)").foregroundColor(.purple)
+                    Text("\(lim) MB  (KRW)")
+                        .foregroundColor(.purple)
                         .font(.system(.body, design: .monospaced))
                 }
             }
@@ -594,8 +584,7 @@ private struct EditorSheet: View {
     // MARK: Memory limit section
     //
     // Writes directly to ledger→entries[phys_footprint].le_limit.
-    // Completely independent of the Priority Band section below.
-    // These two actions do different things and do NOT conflict.
+    // Independent of Priority Band — the two sections do entirely different things.
 
     @ViewBuilder
     private var memoryLimitSection: some View {
@@ -621,7 +610,7 @@ private struct EditorSheet: View {
                         .foregroundColor(scannerReady ? .purple : .secondary)
                 }
 
-                // Device-agnostic: 256 MB – 6 GB.  No device-specific cap.
+                // Device-agnostic range: 256 MB – 6 GB. No entitlement-imposed ceiling.
                 Slider(value: $targetMB, in: 256...6144, step: 64)
                     .tint(.purple).disabled(!scannerReady)
 
@@ -656,7 +645,8 @@ private struct EditorSheet: View {
                 }
                 .listRowBackground(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(scannerReady && mgr.dsready && !limitBusy ? Color.purple : Color.gray)
+                        .fill(scannerReady && mgr.dsready && !limitBusy
+                              ? Color.purple : Color.gray)
                 )
                 .disabled(!scannerReady || !mgr.dsready || limitBusy)
 
@@ -679,9 +669,8 @@ private struct EditorSheet: View {
 
     // MARK: Priority band section
     //
-    // Sets the jetsam kill-order band via memorystatus_control.
-    // This affects kill ORDER under pressure — it does NOT set a memory hard cap.
-    // Completely independent of the Memory Limit section above.
+    // Sets kill-order under jetsam pressure. No memory cap effect.
+    // Independent of the Memory Limit section above.
 
     @ViewBuilder
     private var priorityBandSection: some View {
@@ -757,7 +746,7 @@ private struct EditorSheet: View {
 
     private func applyLimit() {
         guard !limitBusy else { return }
-        limitBusy    = true
+        limitBusy     = true
         limitFeedback = ""
         let pid = Int32(process.pid)
         let mb  = Int32(targetMB)
@@ -765,14 +754,14 @@ private struct EditorSheet: View {
         DispatchQueue.global(qos: .userInitiated).async {
             let result = LedgerScanner.applyLimit(pid: pid, targetMB: mb)
             DispatchQueue.main.async {
-                limitBusy = false
+                self.limitBusy = false
                 if result.ok {
-                    limitFeedback = "✓ \(result.detail)"
-                    onLimitApplied(Int(mb))
-                    onResult("Memory limit set on \(process.name): \(result.detail)")
+                    self.limitFeedback = "✓ \(result.detail)"
+                    self.onLimitApplied(Int(mb))
+                    self.onResult("Memory limit set on \(self.process.name): \(result.detail)")
                 } else {
-                    limitFeedback = "✗ \(result.detail)"
-                    onResult("Memory limit failed (\(process.name)): \(result.detail)")
+                    self.limitFeedback = "✗ \(result.detail)"
+                    self.onResult("Memory limit failed (\(self.process.name)): \(result.detail)")
                 }
             }
         }
@@ -783,7 +772,7 @@ private struct EditorSheet: View {
     private func applyBand() {
         guard !bandBusy else { return }
 
-        // RC pool must be read on the main thread — capture before dispatching.
+        // RC pool must be read on the main thread before dispatching.
         var captures: [(rc: RemoteCall, trojan: UInt64, name: String)] = []
         let rcio = RemoteFileIO.shared
         for pName in ["configd", "SpringBoard", "securityd"] {
@@ -794,26 +783,27 @@ private struct EditorSheet: View {
             captures.append((rc, t, pName))
         }
 
-        bandBusy    = true
+        bandBusy     = true
         bandFeedback = ""
-        let pid   = Int32(process.pid)
-        let band  = Int32(bandDouble)
+        let pid  = Int32(process.pid)
+        let band = Int32(bandDouble)
 
         DispatchQueue.global(qos: .userInitiated).async {
-            // Build the memorystatus_priority_properties buffer (16 bytes, band at offset 0)
             var buf = [UInt8](repeating: 0, count: 16)
             withUnsafeBytes(of: band) { src in buf.replaceSubrange(0..<4, with: src) }
 
-            // Attempt 1: direct call from lara
+            // Attempt 1: direct call from lara (works when sandbox escape is active)
             var ok     = false
             var source = "direct"
             let ret = buf.withUnsafeMutableBytes { ptr in
-                memorystatus_control(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES,
-                                     pid, 0, ptr.baseAddress, 16)
+                memorystatus_control(
+                    MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES,
+                    pid, 0, ptr.baseAddress, 16
+                )
             }
             ok = ret == 0
 
-            // Attempt 2: RC fallback — configd is root and can set any pid's band
+            // Attempt 2: RC fallback via configd/SpringBoard/securityd (root, cmd7 allowed)
             if !ok {
                 for cap in captures {
                     buf.withUnsafeBytes { bytes in
@@ -838,17 +828,19 @@ private struct EditorSheet: View {
             }
 
             DispatchQueue.main.async {
-                bandBusy = false
+                self.bandBusy = false
                 if ok {
-                    bandFeedback = "✓ band \(band) via \(source)"
-                    onBandApplied(Int(band))
-                    onResult("Band \(band) (\(self.bandLabel(Int(band)))) set on \(self.process.name)")
+                    self.bandFeedback = "✓ band \(band) via \(source)"
+                    self.onBandApplied(Int(band))
+                    self.onResult(
+                        "Band \(band) (\(self.bandLabel(Int(band)))) set on \(self.process.name)"
+                    )
                 } else {
-                    bandFeedback  = "✗ failed (errno \(errno))"
-                    bandFeedback += captures.isEmpty
+                    self.bandFeedback  = "✗ failed (errno \(errno))"
+                    self.bandFeedback += captures.isEmpty
                         ? " — initialise RC on configd for best reliability"
                         : " — RC also failed"
-                    onResult("Band apply failed for \(self.process.name): errno \(errno)")
+                    self.onResult("Band apply failed for \(self.process.name): errno \(errno)")
                 }
             }
         }
