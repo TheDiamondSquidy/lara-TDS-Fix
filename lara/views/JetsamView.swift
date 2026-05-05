@@ -428,12 +428,17 @@ struct JetsamView: View {
             result.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
             DispatchQueue.main.async {
-                // Preserve modifications across refresh
+                // Preserve modifications across refresh.
+                // Copy band/limit state from the previous entry; update name/pid/uid from proclist.
                 let prev = Dictionary(uniqueKeysWithValues: self.processes.map { ($0.pid, $0) })
                 self.processes = result.map { p in
-                    guard var existing = prev[p.pid] else { return p }
-                    existing = p   // refresh pid/uid/name
-                    return existing
+                    guard let existing = prev[p.pid], existing.isModified else { return p }
+                    var updated = p
+                    updated.origBand      = existing.origBand
+                    updated.targetBand    = existing.targetBand
+                    updated.bandApplied   = existing.bandApplied
+                    updated.ledgerLimitMB = existing.ledgerLimitMB
+                    return updated
                 }
                 self.loading = false
             }
